@@ -9,14 +9,8 @@ import 'package:mobile_miftahul_ulumv2/models/izin_model.dart';
 // ======================= BAGIAN KEDUA: Fungsi Umum =======================
 
 String getBaseUrl() {
-  // if (kIsWeb) {
-  //   return 'http://127.0.0.1:8000';
-  // } else if (Platform.isAndroid) {
-  //   return 'http://10.0.2.2:8000';
-  // } else {
-  //   return 'http://127.0.0.1:8000';
-  // }
-  // Karena Anda ingin selalu pakai base URL yang tetap ini, kita override semua kondisi:
+  // Catatan: Jika di-run di Emulator Android, gunakan 'http://10.0.2.2:8000'
+  // Jika di real device, gunakan IP Address komputer server (misal: 'http://192.168.x.x:8000')
   return 'http://localhost:8000';
 }
 
@@ -37,7 +31,7 @@ Future<Map<String, dynamic>> loginUser(String email, String password) async {
     final responseData = jsonDecode(response.body);
     
     if (response.statusCode == 200) {
-      return responseData;
+      return responseData; // Mengembalikan success, token, dan akun
     } else {
       return {
         'success': false,
@@ -52,10 +46,10 @@ Future<Map<String, dynamic>> loginUser(String email, String password) async {
   }
 }
 
-// API untuk mengirim link reset password - DIPERBAIKI ENDPOINT NYA
+// API untuk mengirim link reset password
 Future<Map<String, dynamic>> sendResetLinkAPI(String email) async {
   final baseUrl = getBaseUrl();
-  final url = Uri.parse('$baseUrl/api/forgot-password'); // UBAH DARI send-reset-link KE forgot-password
+  final url = Uri.parse('$baseUrl/api/forgot-password'); 
   
   try {
     final response = await http.post(
@@ -68,9 +62,6 @@ Future<Map<String, dynamic>> sendResetLinkAPI(String email) async {
         'email': email,
       }),
     );
-    
-    debugPrint('Send Reset Link Response Status: ${response.statusCode}');
-    debugPrint('Send Reset Link Response Body: ${response.body}');
     
     final responseData = jsonDecode(response.body);
     
@@ -86,7 +77,6 @@ Future<Map<String, dynamic>> sendResetLinkAPI(String email) async {
       };
     }
   } catch (e) {
-    debugPrint('Send Reset Link Error: $e');
     return {
       'success': false,
       'message': 'Terjadi kesalahan: $e',
@@ -111,8 +101,6 @@ Future<Map<String, dynamic>> verifyResetPasswordAPI(
       'password_confirmation': newPassword,
     };
     
-    debugPrint('Verify Reset Password Request: $requestBody');
-    
     final response = await http.post(
       url,
       headers: {
@@ -121,9 +109,6 @@ Future<Map<String, dynamic>> verifyResetPasswordAPI(
       },
       body: jsonEncode(requestBody),
     );
-    
-    debugPrint('Verify Reset Password Response Status: ${response.statusCode}');
-    debugPrint('Verify Reset Password Response Body: ${response.body}');
     
     final responseData = jsonDecode(response.body);
     
@@ -140,7 +125,6 @@ Future<Map<String, dynamic>> verifyResetPasswordAPI(
       };
     }
   } catch (e) {
-    debugPrint('Verify Reset Password Error: $e');
     return {
       'success': false,
       'message': 'Terjadi kesalahan: $e',
@@ -151,75 +135,152 @@ Future<Map<String, dynamic>> verifyResetPasswordAPI(
 // ======================= BAGIAN PERTAMA: ApiService & Model =======================
 
 class ApiService {
-  // Base URL API yang baru
-  static final String baseUrl = 'http://localhost:8000/api';
+  // Base URL API
+  static final String baseUrl = '${getBaseUrl()}/api';
 
-  // Singleton pattern untuk memastikan hanya ada satu instance
+  // Singleton pattern
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
   ApiService._internal();
 
-  // Headers default untuk request
+  // Headers default
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   };
 
-  // Method untuk mengambil data pengumuman
+  // ==================== PENGUMUMAN ====================
   Future<List<PengumumanModel>> getPengumuman() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/pengumuman'),
-        headers: _headers,
-      );
-
-      debugPrint('Response status: ${response.statusCode}');
-      debugPrint('Response body: ${response.body}');
+      final response = await http.get(Uri.parse('$baseUrl/pengumuman'), headers: _headers);
 
       if (response.statusCode == 200) {
         final dynamic decoded = json.decode(response.body);
-
         List<dynamic> data;
 
         if (decoded is List) {
-          // Server mengembalikan List langsung (e.g. [])
-          data = decoded;
+          data = decoded; // Laravel mereturn List langsung
         } else if (decoded is Map<String, dynamic> && decoded.containsKey('data')) {
-          // Server mengembalikan {data: [...]}
           data = decoded['data'] as List<dynamic>;
         } else {
           data = [];
         }
-
-        debugPrint('Data count: ${data.length}');
-
         return data.map((item) => PengumumanModel.fromJson(item)).toList();
       } else {
-        throw Exception(
-          'Gagal mengambil pengumuman. Status: ${response.statusCode}',
-        );
+        throw Exception('Gagal mengambil pengumuman.');
       }
     } catch (e) {
-      debugPrint('Error in getPengumuman: $e');
       throw Exception('Error: $e');
     }
   }
 
-  // ======================= DUMMY METHODS (KOSONG) =======================
-  // Silakan integrasikan dengan backend web nantinya.
-
-  Future<List<ChatMessageModel>> getChatHistory() async {
-    // Return empty list until backend is ready
-    return [];
+  // ==================== DATA SANTRI ====================
+  Future<Map<String, dynamic>> getSantriById(String santriId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/santri/$santriId'), headers: _headers);
+      if (response.statusCode == 200) {
+        return json.decode(response.body); // Return format: { success, message, data }
+      }
+      return {'success': false, 'message': 'Gagal mengambil data'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
   }
 
-  Future<List<FaqModel>> getFaqList() async {
-    // Return empty list until backend is ready
-    return [];
+  Future<Map<String, dynamic>> getSantriByOrtu(String parentId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/santri/ortu/$parentId'), headers: _headers);
+      if (response.statusCode == 200) {
+        return json.decode(response.body); // Return format: { success, message, data: [...] }
+      }
+      return {'success': false, 'message': 'Gagal mengambil data'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ==================== KEHADIRAN ====================
+  Future<Map<String, dynamic>> getKehadiranMingguan(String santriId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/kehadiran-mingguan/$santriId'), headers: _headers);
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {'success': false, 'message': 'Gagal mengambil data'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  Future<Map<String, dynamic>> getKehadiranSummary(String santriId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/kehadiran-bytime/$santriId'), headers: _headers);
+      if (response.statusCode == 200) {
+        return json.decode(response.body); // Return format: { success, data: { hadir, izin } }
+      }
+      return {'success': false, 'message': 'Gagal mengambil data'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
+  }
+
+  // ==================== PERIZINAN ====================
+  Future<Map<String, dynamic>> getPerizinan(String santriId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/perizinan/$santriId'), headers: _headers);
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return {'success': false, 'message': 'Gagal mengambil data'};
+    } catch (e) {
+      return {'success': false, 'message': e.toString()};
+    }
   }
 
   Future<bool> submitIzin(IzinRequestModel data) async {
-    // Return true for now to simulate success until backend is ready
-    return true;
+    // Sesuaikan endpoint submit izin dengan API yang akan Anda buat
+    return true; 
+  }
+
+  // ==================== CHAT HISTORY & SEND ====================
+  Future<List<ChatMessageModel>> getChatHistory(String parentId) async {
+    try {
+      final response = await http.get(Uri.parse('$baseUrl/chat/$parentId/history'), headers: _headers);
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> decoded = json.decode(response.body);
+        return decoded.map((item) => ChatMessageModel.fromJson(item)).toList();
+      } else {
+        throw Exception('Gagal mengambil history chat');
+      }
+    } catch (e) {
+      debugPrint('Error in getChatHistory: $e');
+      throw Exception('Error: $e');
+    }
+  }
+
+  Future<bool> sendMessage(String parentId, String message) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/chat/$parentId/send-api'),
+        headers: _headers,
+        body: json.encode({'pesan': message}),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['success'] ?? false;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error in sendMessage: $e');
+      return false;
+    }
+  }
+
+  // ==================== FAQ ====================
+  Future<List<FaqModel>> getFaqList() async {
+    // Belum ada rute di web.php / api.php, biarkan dummy
+    return [];
   }
 }

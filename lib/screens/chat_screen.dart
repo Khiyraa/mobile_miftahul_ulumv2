@@ -15,6 +15,9 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   late Future<List<ChatMessageModel>> _chatFuture;
 
+  // ID orang tua — nanti bisa disesuaikan dengan data SharedPreferences/Login
+  final String _parentId = '1';
+
   // Data fallback lokal saat API belum tersedia
   final List<ChatMessageModel> _fallbackMessages = [
     ChatMessageModel(
@@ -52,7 +55,39 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _chatFuture = ApiService().getChatHistory();
+    _fetchChatHistory();
+  }
+
+  void _fetchChatHistory() {
+    _chatFuture = ApiService().getChatHistory(_parentId);
+  }
+
+  Future<void> _sendMessage() async {
+    final messageText = _messageController.text.trim();
+    if (messageText.isEmpty) return;
+
+    // Kosongkan field agar UI terasa responsif langsung
+    _messageController.clear();
+
+    // Panggil API Send Message
+    final success = await ApiService().sendMessage(_parentId, messageText);
+
+    if (success) {
+      // Jika berhasil, refresh data chat untuk menampilkan pesan baru
+      if (mounted) {
+        setState(() {
+          _fetchChatHistory();
+        });
+      }
+    } else {
+      // Jika gagal, kembalikan teks ke kolom input dan tampilkan notif
+      _messageController.text = messageText;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal mengirim pesan')),
+        );
+      }
+    }
   }
 
   @override
@@ -149,7 +184,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (snapshot.hasData && snapshot.data!.isNotEmpty) {
                   messages = snapshot.data!;
                 } else {
-                  // Gunakan fallback lokal jika API belum terhubung
+                  // Gunakan fallback lokal jika API belum terhubung/kosong
                   messages = _fallbackMessages;
                 }
 
@@ -241,6 +276,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   hintStyle: AppTheme.body.copyWith(color: AppTheme.outline),
                   border: InputBorder.none,
                 ),
+                // Opsional: Kirim pesan ketika user menekan enter di keyboard
+                onSubmitted: (_) => _sendMessage(),
               ),
             ),
             Container(
@@ -255,7 +292,8 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               child: IconButton(
                 icon: const Icon(Icons.send, size: 18, color: AppTheme.onPrimary),
-                onPressed: () {},
+                // Ubah onPressed memanggil fungsi _sendMessage()
+                onPressed: _sendMessage,
               ),
             )
           ],

@@ -78,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
     IconData icon;
     switch (iconName) {
       case 'home': icon = Icons.home; break;
-      case 'auto_stories': icon = Icons.menu_book; break; // closest to auto_stories
+      case 'auto_stories': icon = Icons.menu_book; break; 
       case 'chat_bubble': icon = Icons.chat_bubble; break;
       case 'more_horiz': icon = Icons.more_horiz; break;
       default: icon = Icons.home;
@@ -135,38 +135,73 @@ class _HomeContentState extends State<_HomeContent> {
   String? _santriNama;
   bool _isLoadingSantri = true;
 
+  // Variabel Dinamis untuk UI
+  String _namaOrtu = 'Bapak/Ibu'; // Default, akan dioverride dari API
+  late String _tanggalHariIni;
+
+  // List Dinamis untuk Jadwal
+  final List<Map<String, dynamic>> _jadwalHariIni = [
+    {'title': 'Shubuh', 'subtitle': 'Berjamaah di Masjid', 'time': '04:15', 'isActive': true},
+    {'title': 'Dzuhur', 'subtitle': 'Istirahat & Shalat', 'time': '11:45', 'isActive': false},
+    {'title': 'Ashar', 'subtitle': 'Kajian Kitab Kuning', 'time': '15:10', 'isActive': false},
+  ];
+
   // ID orang tua — nanti bisa diambil dari SharedPreferences setelah login
-  // Untuk saat ini menggunakan placeholder
   final String _idOrtu = '1';
   String? _selectedSantriId;
 
   @override
   void initState() {
     super.initState();
+    _initDate();
     _loadSantriData();
+  }
+
+  // Fungsi untuk men-generate tanggal hari ini secara dinamis
+  void _initDate() {
+    final now = DateTime.now();
+    final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    final months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    _tanggalHariIni = '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
 
   Future<void> _loadSantriData() async {
     try {
+      // 1. Ambil Nama Orang Tua secara dinamis dari ApiService yang baru
+      final ortuResponse = await ApiService().getSantriByOrtu(_idOrtu);
+      if (ortuResponse['success'] == true && ortuResponse['data'] != null) {
+        final List dataList = ortuResponse['data'];
+        if (dataList.isNotEmpty && dataList[0]['ortu'] != null) {
+          if (mounted) {
+            setState(() {
+              _namaOrtu = dataList[0]['ortu']['nama_lengkap'] ?? _namaOrtu;
+            });
+          }
+        }
+      }
+
+      // 2. Load data santri menggunakan service yang sudah ada
       final santriResponse = await SantriApiService.getSantriByOrtuIdFromMobile(_idOrtu);
 
       if (santriResponse.success && santriResponse.data != null && santriResponse.data!.isNotEmpty) {
         final santriList = santriResponse.data!;
         final firstSantri = santriList.first;
 
-        setState(() {
-          _santriList = santriList;
-          _selectedSantriId = firstSantri.idSantri.toString();
-          _santriNama = firstSantri.nama;
-        });
+        if (mounted) {
+          setState(() {
+            _santriList = santriList;
+            _selectedSantriId = firstSantri.idSantri.toString();
+            _santriNama = firstSantri.nama;
+          });
+        }
 
         // Load kehadiran dan perizinan untuk santri pertama
         await _loadSantriDetail(firstSantri.idSantri.toString());
       } else {
-        setState(() => _isLoadingSantri = false);
+        if (mounted) setState(() => _isLoadingSantri = false);
       }
     } catch (e) {
-      setState(() => _isLoadingSantri = false);
+      if (mounted) setState(() => _isLoadingSantri = false);
     }
   }
 
@@ -385,7 +420,7 @@ class _HomeContentState extends State<_HomeContent> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          "Assalamu'alaikum,\nUmmi Sarah",
+                          "Assalamu'alaikum,\n$_namaOrtu", // Menggunakan variabel dinamis nama ortu
                           style: AppTheme.headline.copyWith(
                             fontSize: 28,
                             fontWeight: FontWeight.w800,
@@ -399,7 +434,7 @@ class _HomeContentState extends State<_HomeContent> {
                             Icon(Icons.calendar_today, size: 14, color: AppTheme.onPrimary.withValues(alpha: 0.9)),
                             const SizedBox(width: 8),
                             Text(
-                              'Kamis, 24 Oktober 2024',
+                              _tanggalHariIni, // Menggunakan variabel dinamis tanggal
                               style: AppTheme.body.copyWith(
                                 fontSize: 14,
                                 color: AppTheme.onPrimary.withValues(alpha: 0.9),
@@ -503,7 +538,7 @@ class _HomeContentState extends State<_HomeContent> {
               ),
               const SizedBox(height: 32),
 
-              // Bento Summary Grid — Data dari SantriApiService
+              // Bento Summary Grid
               Row(
                 children: [
                   Expanded(
@@ -669,11 +704,12 @@ class _HomeContentState extends State<_HomeContent> {
                   borderRadius: BorderRadius.circular(32),
                 ),
                 child: Column(
-                  children: [
-                    _buildTimelineItem('Shubuh', 'Berjamaah di Masjid', '04:15', isActive: true),
-                    _buildTimelineItem('Dzuhur', 'Istirahat & Shalat', '11:45', isActive: false),
-                    _buildTimelineItem('Ashar', 'Kajian Kitab Kuning', '15:10', isActive: false),
-                  ],
+                  children: _jadwalHariIni.map((jadwal) => _buildTimelineItem(
+                    jadwal['title'], 
+                    jadwal['subtitle'], 
+                    jadwal['time'], 
+                    isActive: jadwal['isActive']
+                  )).toList(), // Menggunakan list jadwal dinamis
                 ),
               ),
               const SizedBox(height: 32),
@@ -699,9 +735,7 @@ class _HomeContentState extends State<_HomeContent> {
                       }
                     }),
                     const SizedBox(width: 12),
-                    _buildActionButton('Chat admin', Icons.chat_bubble_outline, false, () {
-                      // Optionally, could switch tab instead, but pushing is fine too
-                    }),
+                    _buildActionButton('Chat admin', Icons.chat_bubble_outline, false, () {}),
                   ],
                 ),
               ),
@@ -790,7 +824,6 @@ class _HomeContentState extends State<_HomeContent> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Foto pengumuman (jika ada)
                               if (item.foto != null && item.foto!.isNotEmpty)
                                 Container(
                                   height: 140,
@@ -802,7 +835,6 @@ class _HomeContentState extends State<_HomeContent> {
                                     ),
                                   ),
                                 ),
-                              // Konten card
                               Padding(
                                 padding: const EdgeInsets.all(20),
                                 child: Stack(
@@ -810,7 +842,6 @@ class _HomeContentState extends State<_HomeContent> {
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        // Header: Icon + Kategori + Prioritas badge
                                         Row(
                                           children: [
                                             Container(
@@ -853,7 +884,6 @@ class _HomeContentState extends State<_HomeContent> {
                                           ],
                                         ),
                                         const SizedBox(height: 12),
-                                        // Judul
                                         Text(
                                           item.judul,
                                           style: AppTheme.headline.copyWith(
@@ -863,7 +893,6 @@ class _HomeContentState extends State<_HomeContent> {
                                           ),
                                         ),
                                         const SizedBox(height: 6),
-                                        // Isi
                                         Text(
                                           item.isi.length > 120 ? '${item.isi.substring(0, 120)}...' : item.isi,
                                           style: AppTheme.body.copyWith(
@@ -873,7 +902,6 @@ class _HomeContentState extends State<_HomeContent> {
                                           ),
                                         ),
                                         const SizedBox(height: 12),
-                                        // Timestamp
                                         Row(
                                           children: [
                                             Icon(Icons.access_time, size: 13, color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.5)),
@@ -889,7 +917,6 @@ class _HomeContentState extends State<_HomeContent> {
                                         ),
                                       ],
                                     ),
-                                    // Background watermark icon
                                     Positioned(
                                       bottom: -24,
                                       right: -24,
@@ -908,12 +935,11 @@ class _HomeContentState extends State<_HomeContent> {
               ),
               const SizedBox(height: 32),
 
-              // Status Perizinan — dari SantriApiService
+              // Status Perizinan
               Text('Status Perizinan', style: AppTheme.headline.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               if (_perizinanList != null && _perizinanList!.isNotEmpty)
                 ...(_perizinanList!.take(3).map((izin) {
-                  // Warna badge berdasarkan status
                   Color badgeColor;
                   Color badgeBg;
                   switch (izin.status.toLowerCase()) {
@@ -1081,7 +1107,7 @@ class _HomeContentState extends State<_HomeContent> {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         decoration: BoxDecoration(
           color: isPrimary ? AppTheme.primary : AppTheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12), // rounded-xl
+          borderRadius: BorderRadius.circular(12),
           boxShadow: isPrimary ? [
             BoxShadow(color: AppTheme.primary.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 10))
           ] : null,
