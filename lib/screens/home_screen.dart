@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
+import 'package:mobile_miftahul_ulumv2/providers/dashboard_provider.dart';
 import 'package:mobile_miftahul_ulumv2/screens/form_izin_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/jadwal_shalat_screen.dart';
 
@@ -22,13 +24,18 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<DashboardProvider>().refresh();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppTheme.surfaceContainerLowest.withOpacity(0.8),
@@ -45,7 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
               type: BottomNavigationBarType.fixed,
               selectedItemColor: AppTheme.primary,
               unselectedItemColor: AppTheme.onSurfaceVariant.withOpacity(0.5),
-              selectedLabelStyle: AppTheme.labelMd.copyWith(fontWeight: FontWeight.bold),
+              selectedLabelStyle: AppTheme.labelMd.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
               unselectedLabelStyle: AppTheme.labelMd,
               items: const [
                 BottomNavigationBarItem(
@@ -82,111 +91,181 @@ class _HomeContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Consumer<DashboardProvider>(
+        builder: (context, provider, child) {
+          if (provider.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final santri = provider.selectedSantri;
+          final summary = provider.kehadiranSummary;
+
+          return SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24.0,
+              vertical: 24.0,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      'Assalamualaikum,',
-                      style: AppTheme.bodyMd.copyWith(color: AppTheme.onSurfaceVariant),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Assalamualaikum,',
+                          style: AppTheme.bodyMd.copyWith(
+                            color: AppTheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          provider.parentName.isNotEmpty
+                              ? provider.parentName
+                              : 'Orang Tua',
+                          style: AppTheme.headlineSm,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Ahmad Santoso',
-                      style: AppTheme.headlineSm,
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: AppTheme.surfaceContainerHighest,
+                      child: Icon(Icons.person, color: AppTheme.primary),
                     ),
                   ],
                 ),
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: AppTheme.surfaceContainerHighest,
-                  child: Icon(Icons.person, color: AppTheme.primary),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
+                const SizedBox(height: 16),
 
-            // Card Ibadah Summary (No-Line Rule)
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceContainerLow,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Status Ibadah',
-                        style: AppTheme.titleMd,
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(16),
+                if (santri != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceContainerHighest.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.face, color: AppTheme.primary),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Santri: ${santri.nama}',
+                              style: AppTheme.titleMd,
+                            ),
+                            if (santri.tahunAngkatan != null)
+                              Text(
+                                'Kelas: ${santri.tahunAngkatan}',
+                                style: AppTheme.labelMd,
+                              ),
+                          ],
                         ),
-                        child: Text(
-                          'Baik',
-                          style: AppTheme.labelMd.copyWith(color: AppTheme.onSecondaryContainer),
-                        ),
-                      )
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      _buildStatItem('Subuh', 'Berjamaah', true),
-                      _buildStatItem('Dhuhur', 'Berjamaah', true),
-                      _buildStatItem('Ashar', '-', false),
-                    ],
-                  )
                 ],
-              ),
-            ),
-            const SizedBox(height: 32),
+                const SizedBox(height: 32),
 
-            // Menu Cepat
-            Text(
-              'Aktivitas Santri',
-              style: AppTheme.headlineSm,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildActionCard(
-                    context,
-                    'Pengajuan Izin',
-                    Icons.assignment_outlined,
-                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FormIzinScreen())),
+                // Card Ibadah/Kehadiran Summary (No-Line Rule)
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceContainerLow,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Status Kehadiran', style: AppTheme.titleMd),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              'Baik',
+                              style: AppTheme.labelMd.copyWith(
+                                color: AppTheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildStatItem(
+                            'Total Hadir',
+                            '${summary?.hadir ?? 0}',
+                            true,
+                          ),
+                          _buildStatItem(
+                            'Total Izin',
+                            '${summary?.izin ?? 0}',
+                            true,
+                          ),
+                          _buildStatItem(
+                            'Status',
+                            santri?.status ?? 'Aktif',
+                            true,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _buildActionCard(
-                    context,
-                    'Jadwal Shalat',
-                    Icons.access_time_rounded,
-                    () => Navigator.push(context, MaterialPageRoute(builder: (_) => const JadwalShalatScreen())),
-                  ),
+                const SizedBox(height: 32),
+
+                // Menu Cepat
+                Text('Aktivitas Santri', style: AppTheme.headlineSm),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildActionCard(
+                        context,
+                        'Pengajuan Izin',
+                        Icons.assignment_outlined,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const FormIzinScreen(),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildActionCard(
+                        context,
+                        'Jadwal Shalat',
+                        Icons.access_time_rounded,
+                        () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const JadwalShalatScreen(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -207,7 +286,12 @@ class _HomeContent extends StatelessWidget {
     );
   }
 
-  Widget _buildActionCard(BuildContext context, String title, IconData icon, VoidCallback onTap) {
+  Widget _buildActionCard(
+    BuildContext context,
+    String title,
+    IconData icon,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -229,14 +313,10 @@ class _HomeContent extends StatelessWidget {
               child: Icon(icon, color: AppTheme.primary),
             ),
             const SizedBox(height: 16),
-            Text(
-              title,
-              style: AppTheme.titleMd,
-            ),
+            Text(title, style: AppTheme.titleMd),
           ],
         ),
       ),
     );
   }
 }
-

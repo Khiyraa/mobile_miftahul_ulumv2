@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
+import 'package:mobile_miftahul_ulumv2/providers/auth_provider.dart';
 import 'package:mobile_miftahul_ulumv2/screens/home_screen.dart';
-import 'package:mobile_miftahul_ulumv2/services/auth_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/custom_text_field.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/primary_button.dart';
 
@@ -15,37 +16,51 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _authService = AuthService();
+
   bool _isLoading = false;
 
-  void _handleLogin() async {
+  Future<void> _handleLogin() async {
+    final email = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Email dan password wajib diisi.'),
+          backgroundColor: AppTheme.tertiary,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
 
-    final user = await _authService.login(
-      _usernameController.text,
-      _passwordController.text,
+    final success = await context.read<AuthProvider>().login(
+      email: email,
+      password: password,
     );
+
+    if (!mounted) return;
 
     setState(() {
       _isLoading = false;
     });
 
-    if (user != null && mounted) {
+    if (success) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const HomeScreen()),
       );
     } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Login gagal, silakan periksa kredensial Anda.'),
-            backgroundColor: AppTheme.tertiary,
-          ),
-        );
-      }
+      final message =
+          context.read<AuthProvider>().errorMessage ??
+          'Login gagal, silakan periksa kredensial Anda.';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppTheme.tertiary),
+      );
     }
   }
 
@@ -60,15 +75,13 @@ class _LoginScreenState extends State<LoginScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 48),
-              // Intentional Asymmetry: Large headline left, subtle element somewhere else
-              Text(
-                'Selamat\nDatang.',
-                style: AppTheme.displayMd,
-              ),
+              Text('Selamat\nDatang.', style: AppTheme.displayMd),
               const SizedBox(height: 12),
               Text(
                 'Sistem Monitoring Santri\nMiftahul Ulum',
-                style: AppTheme.bodyLg.copyWith(color: AppTheme.onSurfaceVariant),
+                style: AppTheme.bodyLg.copyWith(
+                  color: AppTheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 64),
               Container(
@@ -105,7 +118,9 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       child: Text(
                         'Lupa kata sandi?',
-                        style: AppTheme.labelMd.copyWith(color: AppTheme.primary),
+                        style: AppTheme.labelMd.copyWith(
+                          color: AppTheme.primary,
+                        ),
                       ),
                     ),
                   ],
