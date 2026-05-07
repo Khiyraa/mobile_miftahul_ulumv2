@@ -43,7 +43,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
             style: AppTheme.bodyMd,
             decoration: InputDecoration(
               hintText: widget.hint,
-              hintStyle: AppTheme.bodyMd.copyWith(color: AppTheme.onSurfaceVariant.withOpacity(0.5)),
+              hintStyle: AppTheme.bodyMd.copyWith(color: AppTheme.onSurfaceVariant.withValues(alpha: 0.5)),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -51,7 +51,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide(
-                  color: AppTheme.primary.withOpacity(0.2), // Ghost border
+                  color: AppTheme.primary.withValues(alpha: 0.2), // Ghost border
                   width: 1,
                 ),
               ),

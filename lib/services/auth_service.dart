@@ -1,31 +1,42 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:mobile_miftahul_ulumv2/models/user_model.dart';
 
 abstract class IAuthService {
-  Future<UserModel?> login(String username, String password);
+  Future<UserModel?> login(String email, String password);
   Future<void> logout();
 }
 
 class AuthService implements IAuthService {
+  static const String _baseUrl = 'https://localhost:8000/api';
+
   @override
-  Future<UserModel?> login(String username, String password) async {
-    // Simulate network delay
-    await Future.delayed(const Duration(seconds: 1));
-    
-    // Dummy login logic
-    if (username.isNotEmpty && password.isNotEmpty) {
-      return UserModel(
-        id: '1',
-        name: 'Ahmad Santoso',
-        nisn: '1234567890',
-        role: 'Santri',
+  Future<UserModel?> login(String email, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/login'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: jsonEncode({'email': email, 'password': password}),
       );
+
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        if (body['success'] == true) {
+          // Parse dari key 'akun' sesuai response backend
+          return UserModel.fromJson(body['akun']);
+        }
+      }
+      return null;
+    } catch (e) {
+      return null;
     }
-    return null;
   }
 
   @override
   Future<void> logout() async {
-    // Simulate logout
-    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 300));
   }
 }
