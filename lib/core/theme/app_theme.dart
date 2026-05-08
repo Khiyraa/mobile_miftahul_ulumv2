@@ -8,8 +8,8 @@ class AppTheme {
   static const Color onSurfaceVariant = Color(0xFF40493D);
   static const Color tertiaryFixed = Color(0xFFFFD9E2);
   static const Color surfaceContainer = Color(0xFFECEEEC);
-  static const Color onPrimaryFixed = Color(0xFF002204);
-  static const Color primaryContainer = Color(0xFF2E7D32);
+  static const Color onPrimaryFixed = Color(0xFF00201A);
+  static const Color primaryContainer = Color(0xFF0F766E);
   static const Color onPrimary = Color(0xFFFFFFFF);
   static const Color secondaryFixedDim = Color(0xFF9CD769);
   static const Color onTertiaryContainer = Color(0xFFFFEDF0);
@@ -43,9 +43,9 @@ class AppTheme {
   static const Color tertiaryFixedDim = Color(0xFFFFB1C7);
   static const Color inverseOnSurface = Color(0xFFEFF1EF);
   static const Color onPrimaryContainer = Color(0xFFCBFFC2);
-  static const Color primary = Color(0xFF0D631B);
-  static const Color outlineVariant = Color(0xFFBFCABA);
-  static const Color onSecondaryContainer = Color(0xFF3E7109);
+  static const Color primary = Color(0xFF0D9488);
+  static const Color outlineVariant = Color(0xFFCBD5E1);
+  static const Color onSecondaryContainer = Color(0xFF334155);
   static const Color onSecondary = Color(0xFFFFFFFF);
   static const Color tertiary = Color(0xFF923357);
   static const Color onBackground = Color(0xFF191C1B);

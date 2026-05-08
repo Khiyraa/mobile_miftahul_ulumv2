@@ -67,19 +67,37 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       setState(() => _isLoading = false);
 
       if (result['success'] == true || result['token'] != null) {
-        // Simpan data sesi ke SharedPreferences
+        // Simpan data sesi ke SharedPreferences (Gabungan logic branch chat & login)
         final prefs = await SharedPreferences.getInstance();
         final akun = result['akun'] as Map<String, dynamic>?;
+        
         if (akun != null) {
-          final parentId = akun['id_akun']?.toString() ?? '';
-          await prefs.setString('parentId', parentId);
+          final idAkun = akun['id_akun']?.toString() ?? '';
+          
+          // Data untuk branch login
+          await prefs.setString('id_akun', idAkun);
+          
+          // Data untuk branch chat
+          await prefs.setString('parentId', idAkun);
           await prefs.setString('parentName', akun['username']?.toString() ?? '');
           await prefs.setString('parentEmail', akun['email']?.toString() ?? '');
-          // Token untuk auth WebSocket Reverb
-          final token = result['token']?.toString() ?? 'dummy-token-$parentId';
-          await prefs.setString('authToken', token);
         }
+
+        final token = result['token']?.toString();
+        if (token != null) {
+          // Token utama
+          await prefs.setString('token', token);
+          // Token untuk auth WebSocket Reverb
+          await prefs.setString('authToken', token);
+        } else if (akun != null) {
+          // Fallback dari branch chat jika token dari API kosong
+          final idAkun = akun['id_akun']?.toString() ?? '';
+          await prefs.setString('authToken', 'dummy-token-$idAkun');
+        }
+
         if (!mounted) return;
+        
+        // Login berhasil
         Navigator.pushReplacementNamed(context, '/home');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
