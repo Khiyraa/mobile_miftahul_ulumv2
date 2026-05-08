@@ -1,8 +1,12 @@
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
 import 'package:mobile_miftahul_ulumv2/models/chat_message_model.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
+import 'package:pusher_channels_flutter/pusher_channels_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -13,415 +17,532 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
-  late Future<List<ChatMessageModel>> _chatFuture;
+  final ScrollController _scrollController = ScrollController();
 
-  // ID orang tua — nanti bisa disesuaikan dengan data SharedPreferences/Login
-  final String _parentId = '1';
+  // State chat
+  final List<ChatMessageModel> _messages = [];
+  bool _isLoading = true;
+  bool _isConnected = false;
 
-  // Data fallback lokal saat API belum tersedia
-  final List<ChatMessageModel> _fallbackMessages = [
-    ChatMessageModel(
-      id: '1',
-      sender: 'Ust. Abdullah (Admin)',
-      text: 'Assalamualaikum, Ibu Rahma. Terkait perkembangan tahfidz Ananda Zaid, saat ini progressnya sudah mencapai Juz 28 dengan makhraj yang semakin baik.',
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      isMe: false,
-    ),
-    ChatMessageModel(
-      id: '2',
-      sender: 'Ibu Rahma (Parent)',
-      text: "Wa'alaikumussalam, Ustadz. Alhamdulillah, terima kasih atas infonya. Apakah ada catatan khusus untuk murojaahnya di rumah saat liburan nanti?",
-      timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 45)),
-      isMe: true,
-    ),
-    ChatMessageModel(
-      id: '3',
-      sender: 'Ust. Abdullah (Admin)',
-      text: 'Tentu, Bu. Kami menyarankan untuk fokus pada pengulangan Surah Al-Mulk dan Al-Qalam agar hafalannya semakin mutqin. Kami akan kirimkan checklist murojaahnya ya.',
-      timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 30)),
-      isMe: false,
-      attachmentType: 'pdf',
-      attachmentName: 'Weekly Progress Report',
-    ),
-    ChatMessageModel(
-      id: '4',
-      sender: 'Ibu Rahma (Parent)',
-      text: 'Baik Ustadz, saya tunggu checklistnya. Jazakallahu khairan.',
-      timestamp: DateTime.now().subtract(const Duration(hours: 1, minutes: 15)),
-      isMe: true,
-    ),
-  ];
+  // Data sesi dari SharedPreferences
+  String _parentId = '';
+  String _parentName = '';
+  String _authToken = '';
+
+  // WebSocket Reverb
+  PusherChannelsFlutter? _pusher;
+  bool _pusherInitialized = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchChatHistory();
+    _init();
   }
 
-  void _fetchChatHistory() {
-    _chatFuture = ApiService().getChatHistory(_parentId);
+  // ─── Inisialisasi: load sesi + pesan awal + koneksi WebSocket ────────
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _parentId   = prefs.getString('parentId')   ?? '1';
+    _parentName = prefs.getString('parentName') ?? 'Wali Santri';
+    _authToken  = prefs.getString('authToken')  ?? 'dummy-token-$_parentId';
+
+    await _loadMessages();
+    await _connectReverb();
   }
 
+  // ─── Load riwayat chat via REST API ──────────────────────────────────
+  Future<void> _loadMessages() async {
+    final msgs = await ApiService().getChatHistory(_parentId);
+    if (!mounted) return;
+    setState(() {
+      _messages
+        ..clear()
+        ..addAll(msgs);
+      _isLoading = false;
+    });
+    _scrollToBottom();
+  }
+
+  // ─── Koneksi WebSocket ke Laravel Reverb ─────────────────────────────
+  Future<void> _connectReverb() async {
+    if (_parentId.isEmpty) return;
+
+    _pusher = PusherChannelsFlutter.getInstance();
+
+    try {
+      await _pusher!.init(
+        apiKey:  kReverbAppKey,
+        cluster: 'mt1',          // cluster wajib diisi tapi tidak dipakai saat pakai host custom
+        host:    getReverbHost(),
+        wsPort:  kReverbWsPort,
+        wssPort: kReverbWsPort,
+        useTLS:  kReverbUseTls,
+        onConnectionStateChange: (current, previous) {
+          if (!mounted) return;
+          setState(() => _isConnected = current == 'CONNECTED');
+          debugPrint('[Reverb] State: $previous → $current');
+        },
+        onError: (msg, code, err) {
+          debugPrint('[Reverb] Error $code: $msg | $err');
+        },
+        // Otentikasi private channel — dipanggil pusher_channels_flutter secara otomatis
+        onAuthorizer: _channelAuthorizer,
+      );
+
+      await _pusher!.subscribe(
+        channelName: 'private-chat.$_parentId',
+        onEvent: _onReverbEvent,
+      );
+
+      await _pusher!.connect();
+      _pusherInitialized = true;
+    } catch (e) {
+      debugPrint('[Reverb] Gagal konek: $e');
+    }
+  }
+
+  /// Callback otentikasi private channel — panggil endpoint khusus mobile.
+  Future<dynamic> _channelAuthorizer(
+    String channelName,
+    String socketId,
+    dynamic options,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${getBaseUrl()}/api/broadcasting/auth'),
+        headers: {
+          'Authorization': 'Bearer $_authToken',
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: {
+          'channel_name': channelName,
+          'socket_id': socketId,
+        },
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+      debugPrint('[Reverb Auth] Gagal: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      debugPrint('[Reverb Auth] Error: $e');
+    }
+    return {};
+  }
+
+  /// Handler event masuk dari Reverb.
+  /// Hanya tambah pesan dari ADMIN — pesan wali sudah ditambah secara optimistis saat kirim.
+  void _onReverbEvent(PusherEvent event) {
+    if (event.eventName != 'MessageSent') return;
+
+    try {
+      final data = jsonDecode(event.data as String) as Map<String, dynamic>;
+      final isFromAdmin = data['is_from_admin'] as bool? ?? true;
+
+      // Mobile hanya perlu menampilkan balas dari admin via WebSocket
+      if (!isFromAdmin) return;
+
+      final msg = ChatMessageModel(
+        id:        (data['id'] ?? '').toString(),
+        sender:    'Admin Pesantren',
+        text:      data['pesan'] as String? ?? '',
+        timestamp: DateTime.now(),
+        isMe:      false,
+      );
+
+      if (!mounted) return;
+      setState(() => _messages.add(msg));
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('[Reverb Event] Parse error: $e');
+    }
+  }
+
+  // ─── Kirim pesan ─────────────────────────────────────────────────────
   Future<void> _sendMessage() async {
-    final messageText = _messageController.text.trim();
-    if (messageText.isEmpty) return;
+    final text = _messageController.text.trim();
+    if (text.isEmpty || _parentId.isEmpty) return;
 
-    // Kosongkan field agar UI terasa responsif langsung
     _messageController.clear();
 
-    // Panggil API Send Message
-    final success = await ApiService().sendMessage(_parentId, messageText);
+    // Tambah optimistis ke UI (tidak tunggu respons API)
+    final optimistic = ChatMessageModel(
+      id:        'temp_${DateTime.now().millisecondsSinceEpoch}',
+      sender:    _parentName,
+      text:      text,
+      timestamp: DateTime.now(),
+      isMe:      true,
+    );
+    setState(() => _messages.add(optimistic));
+    _scrollToBottom();
 
-    if (success) {
-      // Jika berhasil, refresh data chat untuk menampilkan pesan baru
-      if (mounted) {
-        setState(() {
-          _fetchChatHistory();
-        });
-      }
-    } else {
-      // Jika gagal, kembalikan teks ke kolom input dan tampilkan notif
-      _messageController.text = messageText;
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Gagal mengirim pesan')),
+    final success = await ApiService().sendMessage(_parentId, text);
+
+    if (!success && mounted) {
+      // Hapus pesan optimistis jika gagal
+      setState(() => _messages.remove(optimistic));
+      _messageController.text = text;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal mengirim pesan. Periksa koneksi internet.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+    // Jika success: admin akan menerima via Echo WebSocket, pesan sudah ada di UI
+  }
+
+  // ─── Utilities ────────────────────────────────────────────────────────
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
         );
       }
-    }
+    });
+  }
+
+  String _formatTime(DateTime dt) =>
+      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+  String _formatDate(DateTime dt) {
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+    ];
+    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
   }
 
   @override
   void dispose() {
+    if (_pusherInitialized && _pusher != null) {
+      _pusher!.unsubscribe(channelName: 'private-chat.$_parentId');
+      _pusher!.disconnect();
+    }
     _messageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  String _formatTime(DateTime dt) {
-    final hour = dt.hour.toString().padLeft(2, '0');
-    final minute = dt.minute.toString().padLeft(2, '0');
-    return '$hour:$minute';
-  }
-
+  // ─── BUILD ────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.surface,
-      body: CustomScrollView(
-        slivers: [
-          // TopAppBar
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: AppTheme.surface.withValues(alpha: 0.8),
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            flexibleSpace: ClipRRect(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                child: Container(color: Colors.transparent),
+      backgroundColor: const Color(0xFFF0F2F5),
+      body: Column(
+        children: [
+          _buildAppBar(),
+          Expanded(child: _buildMessageList()),
+          _buildInputArea(),
+        ],
+      ),
+    );
+  }
+
+  // ─── AppBar ──────────────────────────────────────────────────────────
+  Widget _buildAppBar() {
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          color: AppTheme.surface.withValues(alpha: 0.95),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.support_agent, color: AppTheme.primary, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Admin Pesantren',
+                          style: AppTheme.headline.copyWith(
+                            fontSize: 15, fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            // Indikator koneksi WebSocket
+                            AnimatedContainer(
+                              duration: const Duration(milliseconds: 400),
+                              width: 7, height: 7,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _isConnected ? const Color(0xFF22c55e) : Colors.grey,
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              _isConnected ? 'Online · Real-time' : 'Menghubungkan…',
+                              style: AppTheme.label.copyWith(
+                                fontSize: 11,
+                                color: _isConnected
+                                    ? const Color(0xFF16a34a)
+                                    : AppTheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Tombol refresh manual (fallback)
+                  IconButton(
+                    icon: const Icon(Icons.refresh_rounded, color: AppTheme.primary, size: 20),
+                    onPressed: _isLoading ? null : _loadMessages,
+                    tooltip: 'Muat ulang',
+                  ),
+                ],
               ),
             ),
-            title: Row(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.1), width: 2),
-                  ),
-                  child: const CircleAvatar(
-                    radius: 18,
-                    backgroundImage: NetworkImage(
-                      'https://lh3.googleusercontent.com/aida-public/AB6AXuDjRfOIiFrXY7ReaIl1Fl7rxhznekqSjuhDnlefUJfjIaOYKlCzZMa7WLMV5tpCZzhbJB8shcIG_uqN-FDaxNavMLEUUBMLROvBPlAVmr8vegSiu8w5wn0hTFwVrJ6dxpiKqdU08y-FIOxBpOdxkTV2jN1NV3t4apOOWrYGAqP0KyfLTbj25bOj7qkalrd1NVejTNWPwOQasqgTg5KJsKwC6LaVBF71oEtvAyRPIsAhCCFyTEFLzUWGHzzG0gfCHr7XNdNiA7Vcqymf',
-                    ),
-                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Daftar pesan ─────────────────────────────────────────────────────
+  Widget _buildMessageList() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_messages.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      itemCount: _messages.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return _buildDateChip(
+            _messages.isNotEmpty
+                ? _formatDate(_messages.first.timestamp)
+                : _formatDate(DateTime.now()),
+          );
+        }
+        return _buildBubble(_messages[index - 1]);
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72, height: 72,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryContainer,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary, size: 32),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Belum ada pesan',
+              style: AppTheme.headline.copyWith(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Mulai percakapan dengan admin pesantren',
+              textAlign: TextAlign.center,
+              style: AppTheme.body.copyWith(fontSize: 13, color: AppTheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateChip(String label) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: AppTheme.label.copyWith(
+            fontSize: 11, fontWeight: FontWeight.w600,
+            color: AppTheme.onSurfaceVariant, letterSpacing: 0.4,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Bubble pesan ─────────────────────────────────────────────────────
+  Widget _buildBubble(ChatMessageModel msg) {
+    final isMine = msg.isMe;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Align(
+        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.76,
+          ),
+          child: Column(
+            crossAxisAlignment:
+                isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              // Label nama + waktu
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3, left: 2, right: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: isMine
+                      ? [
+                          Text(_formatTime(msg.timestamp),
+                              style: AppTheme.label.copyWith(fontSize: 10, color: AppTheme.onSurfaceVariant)),
+                          const SizedBox(width: 5),
+                          Text(_parentName.isNotEmpty ? _parentName : 'Saya',
+                              style: AppTheme.label.copyWith(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.onSurface)),
+                        ]
+                      : [
+                          Text(msg.sender,
+                              style: AppTheme.label.copyWith(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                          const SizedBox(width: 5),
+                          Text(_formatTime(msg.timestamp),
+                              style: AppTheme.label.copyWith(fontSize: 10, color: AppTheme.onSurfaceVariant)),
+                        ],
                 ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Miftahul Ulum Kalisat',
-                      style: AppTheme.headline.copyWith(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 18,
-                        letterSpacing: -1,
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                    Text(
-                      'ADMIN SUPPORT',
-                      style: AppTheme.label.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10,
-                        letterSpacing: 1.5,
-                        color: AppTheme.primary,
-                      ),
+              ),
+              // Bubble
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: isMine ? AppTheme.primary : Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topLeft:     const Radius.circular(18),
+                    topRight:    const Radius.circular(18),
+                    bottomLeft:  Radius.circular(isMine ? 18 : 4),
+                    bottomRight: Radius.circular(isMine ? 4 : 18),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 6, offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.notifications_none, color: AppTheme.primary),
-                style: IconButton.styleFrom(
-                  hoverColor: AppTheme.surfaceContainerLow,
+                child: Text(
+                  msg.text,
+                  style: AppTheme.body.copyWith(
+                    color: isMine ? Colors.white : AppTheme.onSurface,
+                    fontSize: 14, height: 1.5,
+                  ),
                 ),
-                onPressed: () {},
               ),
-              const SizedBox(width: 8),
+              // Status centang
+              if (isMine) ...[
+                const SizedBox(height: 2),
+                const Icon(Icons.done_all_rounded, size: 13, color: AppTheme.primary),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
 
-          // Message Container — FutureBuilder
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(24, 24, 24, 160),
-            sliver: FutureBuilder<List<ChatMessageModel>>(
-              future: _chatFuture,
-              builder: (context, snapshot) {
-                // Tentukan pesan yang akan ditampilkan
-                List<ChatMessageModel> messages;
-
-                if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                  messages = snapshot.data!;
-                } else {
-                  // Gunakan fallback lokal jika API belum terhubung/kosong
-                  messages = _fallbackMessages;
-                }
-
-                return SliverList(
-                  delegate: SliverChildListDelegate([
-                    // Date Indicator
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceContainerLow,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          'TODAY',
-                          style: AppTheme.label.copyWith(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.5,
-                            color: AppTheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-
-                    // Render semua pesan dari API/fallback
-                    ...messages.expand((msg) {
-                      List<Widget> widgets = [];
-
-                      widgets.add(
-                        _buildMessageBubble(
-                          isSender: msg.isMe,
-                          name: msg.sender,
-                          time: _formatTime(msg.timestamp),
-                          text: msg.text,
-                        ),
-                      );
-
-                      // Tampilkan attachment jika ada
-                      if (msg.attachmentType != null && msg.attachmentName != null) {
-                        widgets.add(const SizedBox(height: 12));
-                        widgets.add(_buildAttachmentCard(msg.attachmentType!, msg.attachmentName!));
-                      }
-
-                      widgets.add(const SizedBox(height: 24));
-                      return widgets;
-                    }),
-                  ]),
-                );
-              },
-            ),
+  // ─── Input area ───────────────────────────────────────────────────────
+  Widget _buildInputArea() {
+    return Container(
+      padding: EdgeInsets.only(
+        left: 12, right: 12, top: 10,
+        bottom: MediaQuery.of(context).padding.bottom + 10,
+      ),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(
+          top: BorderSide(color: AppTheme.outlineVariant.withValues(alpha: 0.25)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12, offset: const Offset(0, -4),
           ),
         ],
       ),
-      
-      // Floating Input Field
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: Container(
-        margin: const EdgeInsets.only(bottom: 80, left: 24, right: 24),
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceContainerLowest,
-          borderRadius: BorderRadius.circular(32),
-          border: Border.all(color: AppTheme.outlineVariant.withValues(alpha: 0.2)),
-          boxShadow: [
-            BoxShadow(
-              color: AppTheme.onSurface.withValues(alpha: 0.05),
-              blurRadius: 15,
-              offset: const Offset(0, 10),
-            )
-          ],
-        ),
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.add, color: AppTheme.outline),
-              onPressed: () {},
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                hoverColor: AppTheme.surfaceContainerLow,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // TextField
+          Expanded(
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 44, maxHeight: 120),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(
+                  color: AppTheme.outlineVariant.withValues(alpha: 0.3),
+                ),
               ),
-            ),
-            Expanded(
               child: TextField(
                 controller: _messageController,
+                maxLines: null,
+                textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
-                  hintText: 'Type your message...',
-                  hintStyle: AppTheme.body.copyWith(color: AppTheme.outline),
+                  hintText: 'Ketik pesan…',
+                  hintStyle: AppTheme.body.copyWith(
+                    color: AppTheme.onSurfaceVariant, fontSize: 14,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10,
+                  ),
                   border: InputBorder.none,
                 ),
-                // Opsional: Kirim pesan ketika user menekan enter di keyboard
+                style: AppTheme.body.copyWith(fontSize: 14),
                 onSubmitted: (_) => _sendMessage(),
               ),
             ),
-            Container(
-              width: 40,
-              height: 40,
+          ),
+          const SizedBox(width: 8),
+          // Tombol kirim
+          GestureDetector(
+            onTap: _sendMessage,
+            child: Container(
+              width: 44, height: 44,
               decoration: BoxDecoration(
                 color: AppTheme.primary,
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: AppTheme.primary.withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 2))
-                ]
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 8, offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              child: IconButton(
-                icon: const Icon(Icons.send, size: 18, color: AppTheme.onPrimary),
-                // Ubah onPressed memanggil fungsi _sendMessage()
-                onPressed: _sendMessage,
-              ),
-            )
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAttachmentCard(String type, String name) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceContainerLowest,
-        border: Border.all(color: AppTheme.outlineVariant.withValues(alpha: 0.3)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.secondaryContainer.withValues(alpha: 0.3),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              type == 'pdf' ? Icons.auto_stories : Icons.attach_file,
-              color: AppTheme.secondary,
+              child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$name Attached',
-                  style: AppTheme.body.copyWith(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.onSurface,
-                  ),
-                ),
-                Text(
-                  '${type.toUpperCase()} Document',
-                  style: AppTheme.body.copyWith(
-                    fontSize: 11,
-                    color: AppTheme.outline,
-                  ),
-                )
-              ],
-            ),
-          ),
-          Container(
-            width: 32,
-            height: 32,
-            decoration: const BoxDecoration(
-              color: AppTheme.surfaceContainerHigh,
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.download, size: 14, color: AppTheme.onSurface),
-          )
         ],
-      ),
-    );
-  }
-
-  Widget _buildMessageBubble({
-    required bool isSender,
-    required String name,
-    required String time,
-    required String text,
-  }) {
-    return Align(
-      alignment: isSender ? Alignment.centerRight : Alignment.centerLeft,
-      child: FractionallySizedBox(
-        widthFactor: 0.85,
-        child: Column(
-          crossAxisAlignment: isSender ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isSender) ...[
-                  Text(
-                    name,
-                    style: AppTheme.body.copyWith(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primary, letterSpacing: -0.5),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(time, style: AppTheme.body.copyWith(fontSize: 10, color: AppTheme.outline)),
-                ] else ...[
-                  Text(time, style: AppTheme.body.copyWith(fontSize: 10, color: AppTheme.outline)),
-                  const SizedBox(width: 8),
-                  Text(
-                    name,
-                    style: AppTheme.body.copyWith(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.onSurface, letterSpacing: -0.5),
-                  ),
-                ]
-              ],
-            ),
-            const SizedBox(height: 4),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isSender ? AppTheme.primaryContainer : AppTheme.surfaceContainerLow,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isSender ? 16 : 0),
-                  bottomRight: Radius.circular(isSender ? 0 : 16),
-                ),
-                boxShadow: AppTheme.shadowSm,
-              ),
-              child: Text(
-                text,
-                style: AppTheme.body.copyWith(
-                  color: isSender ? AppTheme.onPrimaryContainer : AppTheme.onSurfaceVariant,
-                  height: 1.5,
-                ),
-              ),
-            ),
-            if (isSender) ...[
-              const SizedBox(height: 4),
-              const Icon(Icons.done_all, size: 14, color: AppTheme.primary),
-            ]
-          ],
-        ),
       ),
     );
   }

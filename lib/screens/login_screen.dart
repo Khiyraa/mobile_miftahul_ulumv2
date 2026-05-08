@@ -3,6 +3,7 @@ import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
 import 'package:mobile_miftahul_ulumv2/screens/forgot_password_screen.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -66,7 +67,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       setState(() => _isLoading = false);
 
       if (result['success'] == true || result['token'] != null) {
-        // Login berhasil
+        // Simpan data sesi ke SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        final akun = result['akun'] as Map<String, dynamic>?;
+        if (akun != null) {
+          final parentId = akun['id_akun']?.toString() ?? '';
+          await prefs.setString('parentId', parentId);
+          await prefs.setString('parentName', akun['username']?.toString() ?? '');
+          await prefs.setString('parentEmail', akun['email']?.toString() ?? '');
+          // Token untuk auth WebSocket Reverb
+          final token = result['token']?.toString() ?? 'dummy-token-$parentId';
+          await prefs.setString('authToken', token);
+        }
+        if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/home');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
