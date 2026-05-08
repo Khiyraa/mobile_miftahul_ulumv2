@@ -1,25 +1,25 @@
 class IzinRequestModel {
-  final String idSantri;
-  final String jenisIzin;
-  final String startDate;
-  final String endDate;
-  final String alasan;
+  final int studentId;
+  final String jenis; // 'keluar', 'pulang', 'kegiatan', 'sakit'
+  final String tanggalMulai;
+  final String tanggalSelesai;
+  final String keterangan;
 
   IzinRequestModel({
-    required this.idSantri,
-    required this.jenisIzin,
-    required this.startDate,
-    required this.endDate,
-    required this.alasan,
+    required this.studentId,
+    required this.jenis,
+    required this.tanggalMulai,
+    required this.tanggalSelesai,
+    required this.keterangan,
   });
 
   Map<String, dynamic> toJson() {
     return {
-      'id_santri': idSantri,
-      'jenis_izin': jenisIzin,
-      'start_date': startDate,
-      'end_date': endDate,
-      'alasan': alasan,
+      'student_id': studentId,
+      'jenis': jenis,
+      'tanggal_mulai': tanggalMulai,
+      'tanggal_selesai': tanggalSelesai,
+      'keterangan': keterangan,
     };
   }
 }

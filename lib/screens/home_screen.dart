@@ -13,6 +13,7 @@ import 'package:mobile_miftahul_ulumv2/screens/santri_detail_screen.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
 import 'package:mobile_miftahul_ulumv2/services/santri_api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -146,8 +147,8 @@ class _HomeContentState extends State<_HomeContent> {
     {'title': 'Ashar', 'subtitle': 'Kajian Kitab Kuning', 'time': '15:10', 'isActive': false},
   ];
 
-  // ID orang tua — nanti bisa diambil dari SharedPreferences setelah login
-  final String _idOrtu = '1';
+  // ID orang tua — diambil dari SharedPreferences setelah login
+  String _idOrtu = '1';
   String? _selectedSantriId;
 
   @override
@@ -167,6 +168,12 @@ class _HomeContentState extends State<_HomeContent> {
 
   Future<void> _loadSantriData() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final idAkun = prefs.getString('id_akun');
+      if (idAkun != null && idAkun.isNotEmpty) {
+        _idOrtu = idAkun;
+      }
+
       // 1. Ambil Nama Orang Tua secara dinamis dari ApiService yang baru
       final ortuResponse = await ApiService().getSantriByOrtu(_idOrtu);
       if (ortuResponse['success'] == true && ortuResponse['data'] != null) {

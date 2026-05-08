@@ -88,105 +88,115 @@ class _SantriDetailScreenState extends State<SantriDetailScreen> with SingleTick
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.surface,
-      body: RefreshIndicator(
-        onRefresh: _onRefresh,
-        color: AppTheme.primary,
-        child: CustomScrollView(
-          slivers: [
-            // App Bar
-            SliverAppBar(
-              pinned: true,
-              backgroundColor: AppTheme.surface.withValues(alpha: 0.8),
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              flexibleSpace: ClipRRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                  child: Container(color: Colors.transparent),
+      body: Stack(
+        children: [
+          // Islamic Pattern Background
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _IslamicPatternPainter(),
+            ),
+          ),
+          RefreshIndicator(
+            onRefresh: _onRefresh,
+            color: AppTheme.primary,
+            child: CustomScrollView(
+              slivers: [
+                // App Bar
+                SliverAppBar(
+                  pinned: true,
+                  backgroundColor: AppTheme.surface.withValues(alpha: 0.8),
+                  elevation: 0,
+                  scrolledUnderElevation: 0,
+                  flexibleSpace: ClipRRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                      child: Container(color: Colors.transparent),
+                    ),
+                  ),
+                  leading: Padding(
+                    padding: const EdgeInsets.only(left: 8.0),
+                    child: IconButton(
+                      icon: const Icon(Icons.arrow_back, color: AppTheme.primary),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ),
+                  title: Text(
+                    'Detail Santri',
+                    style: AppTheme.headline.copyWith(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                      letterSpacing: -1,
+                      color: AppTheme.primary,
+                    ),
+                  ),
+                  centerTitle: true,
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: AppTheme.primary),
+                      onPressed: _onRefresh,
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                 ),
-              ),
-              leading: Padding(
-                padding: const EdgeInsets.only(left: 8.0),
-                child: IconButton(
-                  icon: const Icon(Icons.arrow_back, color: AppTheme.primary),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ),
-              title: Text(
-                'Detail Santri',
-                style: AppTheme.headline.copyWith(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                  letterSpacing: -1,
-                  color: AppTheme.primary,
-                ),
-              ),
-              centerTitle: true,
-              actions: [
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: AppTheme.primary),
-                  onPressed: _onRefresh,
-                ),
-                const SizedBox(width: 8),
+
+                // Content
+                if (_isLoading)
+                  const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_error != null)
+                  SliverFillRemaining(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48, color: AppTheme.error),
+                          const SizedBox(height: 16),
+                          Text('Gagal memuat data', style: AppTheme.headline.copyWith(fontSize: 16, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 8),
+                          Text(_error!, style: AppTheme.body.copyWith(color: AppTheme.outline, fontSize: 12)),
+                          const SizedBox(height: 24),
+                          AnimatedPressButton(
+                            onPressed: _loadAllData,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primary,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text('Coba Lagi', style: AppTheme.headline.copyWith(color: AppTheme.onPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
+                    sliver: SliverList(
+                      delegate: SliverChildListDelegate([
+                        // ===== PROFIL SANTRI =====
+                        _buildProfilCard(),
+                        const SizedBox(height: 24),
+
+                        // ===== STATISTIK KEHADIRAN =====
+                        _buildKehadiranStats(),
+                        const SizedBox(height: 24),
+
+                        // ===== KEHADIRAN MINGGUAN =====
+                        _buildKehadiranMingguan(),
+                        const SizedBox(height: 24),
+
+                        // ===== RIWAYAT PERIZINAN =====
+                        _buildRiwayatPerizinan(),
+                      ]),
+                    ),
+                  ),
               ],
             ),
-
-            // Content
-            if (_isLoading)
-              const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_error != null)
-              SliverFillRemaining(
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 48, color: AppTheme.error),
-                      const SizedBox(height: 16),
-                      Text('Gagal memuat data', style: AppTheme.headline.copyWith(fontSize: 16, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Text(_error!, style: AppTheme.body.copyWith(color: AppTheme.outline, fontSize: 12)),
-                      const SizedBox(height: 24),
-                      AnimatedPressButton(
-                        onPressed: _loadAllData,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text('Coba Lagi', style: AppTheme.headline.copyWith(color: AppTheme.onPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    // ===== PROFIL SANTRI =====
-                    _buildProfilCard(),
-                    const SizedBox(height: 24),
-
-                    // ===== STATISTIK KEHADIRAN =====
-                    _buildKehadiranStats(),
-                    const SizedBox(height: 24),
-
-                    // ===== KEHADIRAN MINGGUAN =====
-                    _buildKehadiranMingguan(),
-                    const SizedBox(height: 24),
-
-                    // ===== RIWAYAT PERIZINAN =====
-                    _buildRiwayatPerizinan(),
-                  ]),
-                ),
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -628,6 +638,33 @@ class _SantriDetailScreenState extends State<SantriDetailScreen> with SingleTick
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          // Show rejection reason if ditolak
+                          if (izin.status.toLowerCase() == 'ditolak' && izin.catatan != null && izin.catatan!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.errorContainer.withValues(alpha: 0.25),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppTheme.error.withValues(alpha: 0.2)),
+                                ),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Icon(Icons.info_outline, size: 14, color: AppTheme.error),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        'Alasan Penolakan: ${izin.catatan}',
+                                        style: AppTheme.label.copyWith(fontSize: 11, color: AppTheme.error, fontStyle: FontStyle.italic, height: 1.4),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
@@ -650,4 +687,70 @@ class _SantriDetailScreenState extends State<SantriDetailScreen> with SingleTick
       ],
     );
   }
+}
+
+class _IslamicPatternPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppTheme.primary.withValues(alpha: 0.03)
+      ..style = PaintingStyle.fill;
+
+    const double patternSize = 60;
+    
+    for (double x = 0; x < size.width; x += patternSize) {
+      for (double y = 0; y < size.height; y += patternSize) {
+        final path = Path();
+        
+        // 1st star
+        path.moveTo(x + 30, y + 0);
+        path.lineTo(x + 32.5, y + 7.5);
+        path.lineTo(x + 40, y + 10);
+        path.lineTo(x + 32.5, y + 12.5);
+        path.lineTo(x + 30, y + 20);
+        path.lineTo(x + 27.5, y + 12.5);
+        path.lineTo(x + 20, y + 10);
+        path.lineTo(x + 27.5, y + 7.5);
+        path.close();
+
+        // 2nd star
+        path.moveTo(x + 30, y + 40);
+        path.lineTo(x + 32.5, y + 47.5);
+        path.lineTo(x + 40, y + 50);
+        path.lineTo(x + 32.5, y + 52.5);
+        path.lineTo(x + 30, y + 60);
+        path.lineTo(x + 27.5, y + 52.5);
+        path.lineTo(x + 20, y + 50);
+        path.lineTo(x + 27.5, y + 47.5);
+        path.close();
+
+        // 3rd star
+        path.moveTo(x + 10, y + 20);
+        path.lineTo(x + 12.5, y + 27.5);
+        path.lineTo(x + 20, y + 30);
+        path.lineTo(x + 12.5, y + 32.5);
+        path.lineTo(x + 10, y + 40);
+        path.lineTo(x + 7.5, y + 32.5);
+        path.lineTo(x + 0, y + 30);
+        path.lineTo(x + 7.5, y + 27.5);
+        path.close();
+
+        // 4th star
+        path.moveTo(x + 50, y + 20);
+        path.lineTo(x + 52.5, y + 27.5);
+        path.lineTo(x + 60, y + 30);
+        path.lineTo(x + 52.5, y + 32.5);
+        path.lineTo(x + 50, y + 40);
+        path.lineTo(x + 47.5, y + 32.5);
+        path.lineTo(x + 40, y + 30);
+        path.lineTo(x + 47.5, y + 27.5);
+        path.close();
+
+        canvas.drawPath(path, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

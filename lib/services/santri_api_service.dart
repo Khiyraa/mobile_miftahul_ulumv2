@@ -5,13 +5,11 @@ import '../models/kehadiran_mingguan.dart';
 import '../models/kehadiran_data.dart';
 import '../models/perizinan.dart';
 
+import '../services/api_service.dart' as api;
+
 class SantriApiService {
   // Base URL configuration
-  static String getBaseUrl() {
-    return 'http://localhost:8000/api';
-  }
-
-  static final String baseUrl = getBaseUrl();
+  static final String baseUrl = '${api.getBaseUrl()}/api';
   static const Map<String, String> headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -97,22 +95,19 @@ class SantriApiService {
 
           return ApiResponse<T>(
             success: true,
-            message: jsonData['message'],
+            message: jsonData['message'] ?? 'Berhasil',
             data: data,
           );
         } else {
-          return ApiResponse<T>(
-            success: false,
-            message: jsonData['message'] ?? 'Request failed',
-          );
+          print('API SERVICE ERROR: success is false. Message: ${jsonData['message']}');
+          return ApiResponse<T>(success: false, message: jsonData['message'] ?? 'Error');
         }
       } else {
-        return ApiResponse<T>(
-          success: false,
-          message: 'HTTP Error: ${response.statusCode}',
-        );
+        print('API SERVICE ERROR: HTTP ${response.statusCode}. Body: ${response.body}');
+        return ApiResponse<T>(success: false, message: 'HTTP Error: ${response.statusCode}');
       }
-    } catch (e) {
+    } catch (e, stacktrace) {
+      print('API SERVICE ERROR: Exception: $e. Stacktrace: $stacktrace');
       return ApiResponse<T>(success: false, message: 'Network Error: $e');
     }
   }
