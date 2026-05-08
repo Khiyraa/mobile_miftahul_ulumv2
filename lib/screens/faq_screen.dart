@@ -274,7 +274,7 @@ class _FaqScreenState extends State<FaqScreen> with TickerProviderStateMixin {
                 Expanded(
                   child: Text(
                     _searchQuery.isNotEmpty
-                        ? 'Hasil pencarian "${_searchQuery}"'
+                        ? 'Hasil pencarian "$_searchQuery"'
                         : _activeKategori == 'Semua'
                             ? 'Semua Pertanyaan'
                             : _activeKategori,
@@ -319,7 +319,7 @@ class _FaqScreenState extends State<FaqScreen> with TickerProviderStateMixin {
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: kategoris.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
         itemBuilder: (_, i) {
           final kat = kategoris[i];
           final isActive = _activeKategori == kat;

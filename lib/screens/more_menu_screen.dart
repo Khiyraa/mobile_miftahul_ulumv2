@@ -43,10 +43,12 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
         _loadRecentPerizinan();
       }
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _isLoadingSantri = false;
         _isLoadingPerizinan = false;
       });
+      }
     }
   }
 
