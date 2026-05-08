@@ -3,6 +3,7 @@ import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
 import 'package:mobile_miftahul_ulumv2/screens/forgot_password_screen.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -66,6 +67,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       setState(() => _isLoading = false);
 
       if (result['success'] == true || result['token'] != null) {
+        // Save to SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        if (result['akun'] != null) {
+          await prefs.setString('id_akun', result['akun']['id_akun'].toString());
+        }
+        if (result['token'] != null) {
+          await prefs.setString('token', result['token']);
+        }
+        
         // Login berhasil
         Navigator.pushReplacementNamed(context, '/home');
       } else {
