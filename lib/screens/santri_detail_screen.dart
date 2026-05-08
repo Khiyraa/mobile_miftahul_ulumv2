@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
@@ -5,6 +6,7 @@ import 'package:mobile_miftahul_ulumv2/models/santri.dart';
 import 'package:mobile_miftahul_ulumv2/models/kehadiran_mingguan.dart';
 import 'package:mobile_miftahul_ulumv2/models/kehadiran_data.dart';
 import 'package:mobile_miftahul_ulumv2/models/perizinan.dart';
+import 'package:mobile_miftahul_ulumv2/services/reverb_service.dart';
 import 'package:mobile_miftahul_ulumv2/services/santri_api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
 
@@ -28,17 +30,61 @@ class _SantriDetailScreenState extends State<SantriDetailScreen> with SingleTick
   // Periode kehadiran yang dipilih: 0=seminggu, 1=sebulan, 2=setahun
   int _selectedPeriode = 0;
 
+  // Realtime listener
+  StreamSubscription<ReverbEvent>? _reverbSub;
+  String get _channelName => 'private-santri.${widget.santriId}';
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _loadAllData();
+    _setupReverbListener();
   }
 
   @override
   void dispose() {
+    _reverbSub?.cancel();
+    ReverbService().unsubscribe(_channelName);
     _tabController.dispose();
     super.dispose();
+  }
+
+  /// Subscribe ke channel privat santri & listen perubahan status izin.
+  /// Setiap kali admin approve/reject di web, mobile akan update otomatis.
+  void _setupReverbListener() {
+    ReverbService().subscribe(_channelName);
+    _reverbSub = ReverbService().events.listen((evt) {
+      if (evt.channel != _channelName) return;
+      if (evt.event != 'PermissionStatusUpdated') return;
+
+      try {
+        final updated = Perizinan.fromJson(evt.data);
+        if (!mounted) return;
+
+        setState(() {
+          final list = List<Perizinan>.from(_perizinanList ?? const []);
+          final idx = list.indexWhere((p) => p.idPerizinan == updated.idPerizinan);
+          if (idx >= 0) {
+            list[idx] = updated;
+          } else {
+            list.insert(0, updated);
+          }
+          _perizinanList = list;
+        });
+
+        // Toast info
+        final statusLabel = updated.statusLabel; // DISETUJUI / DITOLAK / MENUNGGU
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Izin ${updated.jenisIzin} → $statusLabel'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } catch (e) {
+        debugPrint('PermissionStatusUpdated parse error: $e');
+      }
+    });
   }
 
   Future<void> _loadAllData() async {

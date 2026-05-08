@@ -28,19 +28,25 @@ class PengumumanModel {
 
   factory PengumumanModel.fromJson(Map<String, dynamic> json) {
     try {
+      // Field bisa datang dengan beberapa nama berbeda (REST API vs WebSocket payload)
+      final rawId    = json['id']        ?? json['id_pengumuman'];
+      final rawAkun  = json['id_akun']   ?? json['user_id'] ?? 0;
+      final rawIsi   = json['isi']       ?? json['konten']  ?? '';
+      final rawMulai = json['tgl_mulai'] ?? json['published_at'] ?? json['created_at'];
+      final rawAkhir = json['tgl_selesai']; // null = pengumuman tanpa expiry
+
       return PengumumanModel(
-        id: json['id_pengumuman'] is int
-            ? json['id_pengumuman']
-            : int.tryParse(json['id_pengumuman'].toString()) ?? 0,
-        judul: json['judul'] ?? '',
-        isi: json['isi'] ?? '',
-        kategori: json['kategori'] ?? '',
-        tglMulai: _parseDateTime(json['tgl_mulai']),
-        tglSelesai: _parseDateTime(json['tgl_selesai']),
-        foto: json['foto'],
-        idAkun: json['id_akun'] is int
-            ? json['id_akun']
-            : int.tryParse(json['id_akun'].toString()) ?? 0,
+        id: rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '0') ?? 0,
+        judul: (json['judul'] ?? '').toString(),
+        isi: rawIsi.toString(),
+        kategori: (json['kategori'] ?? 'umum').toString(),
+        tglMulai: _parseDateTime(rawMulai),
+        // Default 1 tahun ke depan jika tidak ada tgl_selesai
+        tglSelesai: rawAkhir != null
+            ? _parseDateTime(rawAkhir)
+            : DateTime.now().add(const Duration(days: 365)),
+        foto: json['foto'] as String?,
+        idAkun: rawAkun is int ? rawAkun : int.tryParse(rawAkun.toString()) ?? 0,
         createdAt: _parseDateTime(json['created_at']),
         updatedAt: _parseDateTime(json['updated_at']),
       );

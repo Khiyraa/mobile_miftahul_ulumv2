@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
@@ -11,8 +12,10 @@ import 'package:mobile_miftahul_ulumv2/screens/chat_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/more_menu_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/santri_detail_screen.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
+import 'package:mobile_miftahul_ulumv2/services/reverb_service.dart';
 import 'package:mobile_miftahul_ulumv2/services/santri_api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -31,6 +34,21 @@ class _HomeScreenState extends State<HomeScreen> {
     const ChatScreen(),
     const MoreMenuScreen(), // Hub menu untuk semua fitur
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _initReverb();
+  }
+
+  /// Inisialisasi koneksi WebSocket Reverb (sekali saja, sepanjang sesi).
+  Future<void> _initReverb() async {
+    final prefs = await SharedPreferences.getInstance();
+    final parentId = prefs.getString('parentId') ?? '';
+    final token = prefs.getString('authToken') ?? 'dummy-token-$parentId';
+    if (parentId.isEmpty) return;
+    ReverbService().connect(authToken: token);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +154,11 @@ class _HomeContentState extends State<_HomeContent> {
   String? _santriNama;
   bool _isLoadingSantri = true;
 
+  // Pengumuman (state lokal agar bisa real-time push)
+  List<PengumumanModel> _pengumumanList = [];
+  bool _isLoadingPengumuman = true;
+  StreamSubscription<ReverbEvent>? _reverbSub;
+
   // Variabel Dinamis untuk UI
   String _namaOrtu = 'Bapak/Ibu'; // Default, akan dioverride dari API
   late String _tanggalHariIni;
@@ -156,6 +179,60 @@ class _HomeContentState extends State<_HomeContent> {
     super.initState();
     _initDate();
     _loadSantriData();
+    _loadPengumuman();
+    _setupReverbListener();
+  }
+
+  @override
+  void dispose() {
+    _reverbSub?.cancel();
+    ReverbService().unsubscribe('pengumuman');
+    super.dispose();
+  }
+
+  /// Load pengumuman dari API + state list (bukan FutureBuilder
+  /// agar bisa di-prepend secara real-time).
+  /// Tidak perlu filter isActive — backend sudah filter is_published=true.
+  Future<void> _loadPengumuman() async {
+    try {
+      final list = await ApiService().getPengumuman();
+      if (!mounted) return;
+      setState(() {
+        _pengumumanList = list;
+        _isLoadingPengumuman = false;
+      });
+    } catch (e) {
+      debugPrint('Pengumuman load error: $e');
+      if (mounted) setState(() => _isLoadingPengumuman = false);
+    }
+  }
+
+  /// Subscribe ke channel `pengumuman` & listen event AnnouncementCreated
+  void _setupReverbListener() {
+    ReverbService().subscribe('pengumuman');
+    _reverbSub = ReverbService().events.listen((evt) {
+      if (evt.channel == 'pengumuman' && evt.event == 'AnnouncementCreated') {
+        try {
+          final newPengumuman = PengumumanModel.fromJson(evt.data);
+          if (!mounted) return;
+          // Hindari duplikat
+          if (_pengumumanList.any((p) => p.id == newPengumuman.id)) return;
+          setState(() {
+            _pengumumanList = [newPengumuman, ..._pengumumanList];
+          });
+          // Toast singkat
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📢 Pengumuman baru: ${newPengumuman.judul}'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } catch (e) {
+          debugPrint('Pengumuman parse error: $e');
+        }
+      }
+    });
   }
 
   // Fungsi untuk men-generate tanggal hari ini secara dinamis
@@ -751,10 +828,9 @@ class _HomeContentState extends State<_HomeContent> {
               // Pengumuman
               Text('Pengumuman', style: AppTheme.headline.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
-              FutureBuilder<List<PengumumanModel>>(
-                future: ApiService().getPengumuman(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+              Builder(
+                builder: (context) {
+                  if (_isLoadingPengumuman) {
                     return Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -765,38 +841,7 @@ class _HomeContentState extends State<_HomeContent> {
                     );
                   }
 
-                  if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-                    // Fallback ke UI statis jika API belum terhubung
-                    return Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: AppTheme.tertiaryFixed,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Stack(
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Libur Akhir Semester', style: AppTheme.headline.copyWith(fontWeight: FontWeight.bold, color: AppTheme.onTertiaryFixedVariant)),
-                              const SizedBox(height: 4),
-                              Text('Jadwal kepulangan santri akan diumumkan pada hari Jumat ini. Harap segera konfirmasi...', style: AppTheme.body.copyWith(fontSize: 14, color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.8))),
-                            ],
-                          ),
-                          Positioned(
-                            bottom: -20,
-                            right: -20,
-                            child: Icon(Icons.campaign, size: 80, color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.1)),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // Tampilkan pengumuman dari API — filter hanya yang aktif
-                  final pengumumanList = snapshot.data!.where((p) => p.isActive).toList();
-
-                  if (pengumumanList.isEmpty) {
+                  if (_pengumumanList.isEmpty) {
                     return Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -819,7 +864,7 @@ class _HomeContentState extends State<_HomeContent> {
                   }
 
                   return Column(
-                    children: pengumumanList.map((item) {
+                    children: _pengumumanList.map((item) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Container(
