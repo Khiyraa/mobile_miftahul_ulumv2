@@ -8,6 +8,10 @@ import 'package:mobile_miftahul_ulumv2/models/izin_model.dart';
 
 // ======================= BAGIAN KEDUA: Fungsi Umum =======================
 
+// Konfigurasi server — ganti sesuai environment:
+//   Emulator Android : 'http://10.0.2.2:8000'
+//   Real device (LAN): 'http://192.168.x.x:8000'
+//   Windows host     : 'http://localhost:8000'
 String getBaseUrl() {
   if (kIsWeb) {
     return 'http://127.0.0.1:8000'; // Untuk Flutter Web
@@ -15,6 +19,18 @@ String getBaseUrl() {
   // Emulator Android  → 'http://10.0.2.2:8000'
   // Real device       → 'http://192.168.x.x:8000'
   return 'http://10.0.2.2:8000';
+}
+
+// ─── Konfigurasi Laravel Reverb (WebSocket) ───────────────────
+// Harus sinkron dengan nilai di .env Laravel (REVERB_*)
+const String kReverbAppKey = '5e3xxduirsctb4kkd899';
+const int    kReverbWsPort = 8080;
+const bool   kReverbUseTls = false; // REVERB_SCHEME=http
+
+/// Host Reverb — sama dengan host API tapi port 8080
+String getReverbHost() {
+  final uri = Uri.parse(getBaseUrl());
+  return uri.host; // misal: 10.0.2.2 atau localhost
 }
 
 Future<Map<String, dynamic>> loginUser(String email, String password) async {
@@ -240,17 +256,19 @@ class ApiService {
 
   Future<List<ChatMessageModel>> getChatHistory(String parentId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/chat/$parentId/history'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/chat/$parentId/history'),
+        headers: _headers,
+      );
 
       if (response.statusCode == 200) {
         final List<dynamic> decoded = json.decode(response.body);
-        return decoded.map((item) => ChatMessageModel.fromJson(item)).toList();
-      } else {
-        throw Exception('Gagal mengambil history chat');
+        return decoded.map((item) => ChatMessageModel.fromJson(item as Map<String, dynamic>)).toList();
       }
+      return [];
     } catch (e) {
       debugPrint('Error in getChatHistory: $e');
-      throw Exception('Error: $e');
+      return [];
     }
   }
 
