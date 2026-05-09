@@ -8,7 +8,7 @@ abstract class IAuthService {
 }
 
 class AuthService implements IAuthService {
-  static const String _baseUrl = 'https://localhost:8000/api';
+  static const String _baseUrl = 'http://192.168.1.6:8000/api';
 
   @override
   Future<UserModel?> login(String email, String password) async {

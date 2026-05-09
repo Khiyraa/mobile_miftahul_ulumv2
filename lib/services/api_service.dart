@@ -14,20 +14,20 @@ import 'package:mobile_miftahul_ulumv2/models/izin_model.dart';
 //   Windows host     : 'http://localhost:8000'
 String getBaseUrl() {
   if (kIsWeb) {
-    return 'http://127.0.0.1:8000'; // Untuk Flutter Web
+    return 'http://192.168.1.6:8000'; // Untuk Flutter Web
   }
   // Pakai 127.0.0.1 jika sudah jalankan:
   //   adb reverse tcp:8000 tcp:8000
   //   adb reverse tcp:8080 tcp:8080
   // Alternatif (real device + WiFi same LAN): 'http://192.168.x.x:8000'
   // Alternatif (emulator Android): 'http://10.0.2.2:8000'
-  return 'http://127.0.0.1:8000';
+  return 'http://192.168.1.6:8000';
 }
 
 // ─── Konfigurasi Laravel Reverb (WebSocket) ───────────────────
 // Harus sinkron dengan nilai di .env Laravel (REVERB_*)
 const String kReverbAppKey = '5e3xxduirsctb4kkd899';
-const int    kReverbWsPort = 8080;
+const int    kReverbWsPort = 8081;
 const bool   kReverbUseTls = false; // REVERB_SCHEME=http
 
 /// Host Reverb — sama dengan host API tapi port 8080
