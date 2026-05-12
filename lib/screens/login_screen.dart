@@ -95,8 +95,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           await prefs.setString('authToken', 'dummy-token-$idAkun');
         }
 
+        // Jika tidak centang "Ingat sesi", tandai agar dihapus saat logout
+        final prefs2 = await SharedPreferences.getInstance();
+        await prefs2.setBool('rememberSession', _rememberMe);
+
         if (!mounted) return;
-        
+
         // Login berhasil
         Navigator.pushReplacementNamed(context, '/home');
       } else {
@@ -149,16 +153,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     child: ScaleTransition(
                       scale: _logoScale,
                       child: Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryContainer.withValues(alpha: 0.1),
+                        width: 80,
+                        height: 80,
+                        decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.mosque, // Using Material Icon mosque
-                          color: AppTheme.primary,
-                          size: 36,
+                          image: DecorationImage(
+                            image: AssetImage('assets/images/logo.png'),
+                            fit: BoxFit.contain,
+                          ),
                         ),
                       ),
                     ),
@@ -175,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'SANTRI MONITORING SYSTEM',
+                    'SISTEM MONITORING SANTRI',
                     style: AppTheme.body.copyWith(
                       fontWeight: FontWeight.w500, // font-medium
                       fontSize: 14, // text-sm
@@ -211,7 +213,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Please enter your credentials to continue.',
+                          'Masukkan email dan kata sandi Anda untuk melanjutkan.',
                           style: AppTheme.body.copyWith(
                             fontSize: 14,
                             color: AppTheme.onSurfaceVariant,
@@ -223,7 +225,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         Padding(
                           padding: const EdgeInsets.only(left: 4),
                           child: Text(
-                            'EMAIL OR PHONE NUMBER',
+                            'EMAIL ATAU NOMOR TELEPON',
                             style: AppTheme.body.copyWith(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -247,7 +249,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'PASSWORD',
+                                'KATA SANDI',
                                 style: AppTheme.body.copyWith(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -258,7 +260,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               GestureDetector(
                                 onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const ForgotPasswordScreen())),
                                 child: Text(
-                                  'Forgot password?',
+                                  'Lupa kata sandi?',
                                   style: AppTheme.body.copyWith(
                                     fontSize: 12,
                                     fontWeight: FontWeight.bold,
@@ -295,7 +297,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               side: const BorderSide(color: AppTheme.outlineVariant),
                             ),
                             Text(
-                              'Remember this session',
+                              'Ingat sesi ini',
                               style: AppTheme.body.copyWith(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w500,
@@ -330,7 +332,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   )
                                 else ...[
                                   Text(
-                                    'Login',
+                                    'Masuk',
                                     style: AppTheme.headline.copyWith(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 18,
@@ -356,14 +358,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         Center(
                           child: RichText(
                             text: TextSpan(
-                              text: "Don't have an account? ",
+                              text: 'Belum punya akun? ',
                               style: AppTheme.body.copyWith(
                                 fontSize: 14,
                                 color: AppTheme.onSurfaceVariant,
                               ),
                               children: [
                                 TextSpan(
-                                  text: 'Contact Administrator',
+                                  text: 'Hubungi Administrator',
                                   style: AppTheme.body.copyWith(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
@@ -394,7 +396,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                   const SizedBox(height: 32),
                   Text(
-                    '© 2024 MIFTAHUL ULUM KALISAT GUARDIAN ECOSYSTEM',
+                    '© 2024 PESANTREN MIFTAHUL ULUM KALISAT',
                     style: AppTheme.body.copyWith(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,

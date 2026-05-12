@@ -140,7 +140,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         ),
                         const SizedBox(height: 32),
                         Text(
-                          'Password Recovery',
+                          'Lupa Kata Sandi',
                           style: AppTheme.headline.copyWith(
                             fontSize: 28, // text-3xl
                             fontWeight: FontWeight.w800, // font-extrabold
@@ -152,7 +152,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: Text(
-                            "Enter the email address or phone number associated with your account and we'll send a code to reset your password.",
+                            'Masukkan email atau nomor telepon yang terdaftar, kami akan mengirimkan kode untuk mengatur ulang kata sandi Anda.',
                             textAlign: TextAlign.center,
                             style: AppTheme.body.copyWith(
                               fontSize: 16,
@@ -169,7 +169,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(left: 4.0, bottom: 8.0),
                             child: Text(
-                              'IDENTIFIER',
+                              'EMAIL / NOMOR TELEPON',
                               style: AppTheme.label.copyWith(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
@@ -188,7 +188,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           child: TextField(
                             controller: _emailController,
                             decoration: InputDecoration(
-                              hintText: 'Email or Phone Number',
+                              hintText: 'Email atau Nomor Telepon',
                               hintStyle: AppTheme.body.copyWith(color: AppTheme.onSurfaceVariant.withValues(alpha: 0.5)),
                               prefixIcon: const Icon(Icons.alternate_email, color: AppTheme.onSurfaceVariant),
                               border: InputBorder.none,
@@ -229,7 +229,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                                     ),
                                   )
                                 : Text(
-                                    'Send Verification Code',
+                                    'Kirim Kode Verifikasi',
                                     style: AppTheme.headline.copyWith(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -263,7 +263,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                         Row(
                           children: [
                             Expanded(
-                              child: _buildAssistanceButton('Support', Icons.support_agent),
+                              child: _buildAssistanceButton('Bantuan', Icons.support_agent),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -281,10 +281,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
                             image: const DecorationImage(
-                              image: NetworkImage(
-                                'https://lh3.googleusercontent.com/aida-public/AB6AXuAgUiK70SHS5jzm1u-GsGgpGSe3aNDcA7AdNjWULsUUcThYWjFi9BIIoU5tfDLThd9v_TNgSDGcJ4Q2xqgnLluxaAh2RpVOG3jKG9Q87DX1B1CuJAJ6LV5nh-_Mz1N0Zv28m_uJqjepOKWZAKTshS0bPnxAWhe7FPGrT6xiaRBdBcAZb2uHtxMW3AsthQ1UCUaJhQaKdbAQ2VKD1sxp_xG_3d-mcj0zfC98b5lMSlxvgC0zPOrdOXcPToYKrAtI5c1mpaMVk3s1uSvy',
-                              ),
-                              fit: BoxFit.cover,
+                              image: AssetImage('assets/images/logo.png'),
+                              fit: BoxFit.contain,
                             ),
                           ),
                           child: Container(

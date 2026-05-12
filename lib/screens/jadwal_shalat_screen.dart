@@ -134,9 +134,7 @@ class _JadwalShalatScreenState extends State<JadwalShalatScreen> {
                   ),
                   child: const CircleAvatar(
                     radius: 18,
-                    backgroundImage: NetworkImage(
-                      'https://lh3.googleusercontent.com/aida-public/AB6AXuDGXGPmZ5BlYfeahIoSXC-JnGbj0vQ4BwThdmnBQ-WDjIz4DljFbK_P1CUOtkUKpiz-4knpuELoH0bGfeG96X6VslLFP9Xc9D-axiM4NIwGw4v8SZTzmVdvB4BAcOOnn4OXluQZFr-kiAl6S5hT77K57kLUYkF9Zr5S1D5nudTTPnk5KfxM3O1D-ZKtbALXFD1BlGTEuNArwx68-j_BSuiSV7QteGDuDsthOZyr82noLbbFndtyKB4uglHnpOrW5bEJJE3ED0FFDk0c',
-                    ),
+                    backgroundImage: AssetImage('assets/images/logo.png'),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -403,7 +401,7 @@ class _JadwalShalatScreenState extends State<JadwalShalatScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Pesantren Miftahul Ulum, Kalisat',
+                              'Pesantren Miftahul Ulum Kalisat',
                               style: AppTheme.headline.copyWith(
                                 fontSize: 14,
                                 fontWeight: FontWeight.bold,
@@ -422,7 +420,7 @@ class _JadwalShalatScreenState extends State<JadwalShalatScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        child: const Text('Change'),
+                        child: const Text('Ubah'),
                       )
                     ],
                   ),
@@ -453,7 +451,7 @@ class _JadwalShalatScreenState extends State<JadwalShalatScreen> {
       int thisIndex = ordered.indexOf(name);
       int activeIndex = ordered.indexOf(_activePrayer);
       if (thisIndex <= activeIndex) {
-         statusText = 'DONE';
+         statusText = 'SELESAI';
       }
     }
 

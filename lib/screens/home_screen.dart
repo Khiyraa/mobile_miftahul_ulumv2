@@ -27,17 +27,17 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-
-  final List<Widget> _pages = [
-    const _HomeContent(),
-    const JadwalShalatScreen(),
-    const ChatScreen(),
-    const MoreMenuScreen(), // Hub menu untuk semua fitur
-  ];
+  late final List<Widget> _pages;
 
   @override
   void initState() {
     super.initState();
+    _pages = [
+      _HomeContent(onGoToChat: () => setState(() => _currentIndex = 2)),
+      const JadwalShalatScreen(),
+      const ChatScreen(),
+      const MoreMenuScreen(),
+    ];
     _initReverb();
   }
 
@@ -79,10 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNavItem(0, 'home', 'Home'),
-                _buildNavItem(1, 'auto_stories', 'Prayer'),
-                _buildNavItem(2, 'chat_bubble', 'Chat'),
-                _buildNavItem(3, 'more_horiz', 'More'),
+                _buildNavItem(0, 'home', 'Beranda'),
+                _buildNavItem(1, 'auto_stories', 'Jadwal'),
+                _buildNavItem(2, 'chat_bubble', 'Pesan'),
+                _buildNavItem(3, 'more_horiz', 'Lainnya'),
               ],
             ),
           ),
@@ -140,7 +140,8 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeContent extends StatefulWidget {
-  const _HomeContent();
+  final VoidCallback? onGoToChat;
+  const _HomeContent({this.onGoToChat});
 
   @override
   State<_HomeContent> createState() => _HomeContentState();
@@ -162,13 +163,6 @@ class _HomeContentState extends State<_HomeContent> {
   // Variabel Dinamis untuk UI
   String _namaOrtu = 'Bapak/Ibu'; // Default, akan dioverride dari API
   late String _tanggalHariIni;
-
-  // List Dinamis untuk Jadwal
-  final List<Map<String, dynamic>> _jadwalHariIni = [
-    {'title': 'Shubuh', 'subtitle': 'Berjamaah di Masjid', 'time': '04:15', 'isActive': true},
-    {'title': 'Dzuhur', 'subtitle': 'Istirahat & Shalat', 'time': '11:45', 'isActive': false},
-    {'title': 'Ashar', 'subtitle': 'Kajian Kitab Kuning', 'time': '15:10', 'isActive': false},
-  ];
 
   // ID orang tua — diambil dari SharedPreferences setelah login
   String _idOrtu = '1';
@@ -443,9 +437,7 @@ class _HomeContentState extends State<_HomeContent> {
                 ),
                 child: const CircleAvatar(
                   radius: 18,
-                  backgroundImage: NetworkImage(
-                    'https://lh3.googleusercontent.com/aida-public/AB6AXuDHYXUkvohzJHjgy6KceQ9ppXBTdNXgU53Ts7tYh-WNwomG_mLU3AtlrpQNIdqklOOpst1n8HrNodF1za5vthiwUt3OvAHEU6GH8CmGOJ4hxUVu4pTylROxhRmlumI_6MFjWLQWuGjxp6CWiYLO4Utd5Yv0mSh_IvDO6zYxH-NjYzNdCAfjh8gl-hnrssQeh_1sBt1fXS1gci3GcFN4IpSH2SVUU7mLno4XljK8_YwCYAsdSB53GFoCN4YaDZ5PNc7HnNavQ7g0V3Pj',
-                  ),
+                  backgroundImage: AssetImage('assets/images/logo.png'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -771,33 +763,6 @@ class _HomeContentState extends State<_HomeContent> {
               ),
               const SizedBox(height: 32),
 
-              // Jadwal Hari Ini
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('Jadwal Hari Ini', style: AppTheme.headline.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
-                  Text('Lihat Semua', style: AppTheme.body.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(32),
-                ),
-                child: Column(
-                  children: _jadwalHariIni.map((jadwal) => _buildTimelineItem(
-                    jadwal['title'], 
-                    jadwal['subtitle'], 
-                    jadwal['time'], 
-                    isActive: jadwal['isActive']
-                  )).toList(), // Menggunakan list jadwal dinamis
-                ),
-              ),
-              const SizedBox(height: 32),
-
               // Quick Actions Row
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -819,7 +784,9 @@ class _HomeContentState extends State<_HomeContent> {
                       }
                     }),
                     const SizedBox(width: 12),
-                    _buildActionButton('Chat admin', Icons.chat_bubble_outline, false, () {}),
+                    _buildActionButton('Chat admin', Icons.chat_bubble_outline, false, () {
+                      widget.onGoToChat?.call();
+                    }),
                   ],
                 ),
               ),
@@ -1109,46 +1076,6 @@ class _HomeContentState extends State<_HomeContent> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildTimelineItem(String title, String subtitle, String time, {required bool isActive}) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
-        color: isActive ? AppTheme.surfaceContainerLowest : Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Opacity(
-        opacity: isActive ? 1.0 : 0.6,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 8, height: 32,
-                  decoration: BoxDecoration(
-                    color: isActive ? AppTheme.primary : AppTheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: AppTheme.headline.copyWith(fontWeight: FontWeight.bold, color: AppTheme.onSurface)),
-                    Text(subtitle, style: AppTheme.body.copyWith(fontSize: 12, color: AppTheme.outline)),
-                  ],
-                ),
-              ],
-            ),
-            Text(time, style: AppTheme.body.copyWith(fontSize: 14, fontWeight: isActive ? FontWeight.bold : FontWeight.w500, color: isActive ? AppTheme.primary : AppTheme.onSurface)),
-          ],
-        ),
-      ),
     );
   }
 

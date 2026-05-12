@@ -1,14 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
 import 'package:mobile_miftahul_ulumv2/models/chat_message_model.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
+import 'package:mobile_miftahul_ulumv2/services/reverb_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:web_socket_channel/status.dart' as ws_status;
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -17,7 +14,7 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
@@ -25,38 +22,40 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoading = true;
   bool _isConnected = false;
 
-  // Sesi
   String _parentId   = '';
   String _parentName = '';
-  String _authToken  = '';
 
-  // WebSocket Reverb (protokol Pusher)
-  WebSocketChannel? _ws;
-  StreamSubscription? _wsSub;
-  String? _socketId;
-  Timer? _pingTimer;
-  Timer? _reconnectTimer;
-  bool _disposed = false;
+  StreamSubscription<ReverbEvent>? _reverbSub;
+  Timer? _pollingTimer;
+  String? _lastMessageId;
 
   String get _channelName => 'private-chat.$_parentId';
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Muat ulang pesan saat app kembali aktif dari background
+      _loadMessages();
+    }
   }
 
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
     _parentId   = prefs.getString('parentId')   ?? '1';
     _parentName = prefs.getString('parentName') ?? 'Wali Santri';
-    _authToken  = prefs.getString('authToken')  ?? 'dummy-token-$_parentId';
 
     await _loadMessages();
-    _connectReverb();
+    _setupReverbListener();
+    _startPolling();
   }
 
-  // ─── Load riwayat chat ───────────────────────────────────────────────
   Future<void> _loadMessages() async {
     final msgs = await ApiService().getChatHistory(_parentId);
     if (!mounted) return;
@@ -65,177 +64,80 @@ class _ChatScreenState extends State<ChatScreen> {
         ..clear()
         ..addAll(msgs);
       _isLoading = false;
+      if (msgs.isNotEmpty) _lastMessageId = msgs.last.id;
     });
     _scrollToBottom();
   }
 
-  // ─── WebSocket: connect, subscribe, listen ───────────────────────────
-  void _connectReverb() {
-    if (_disposed || _parentId.isEmpty) return;
+  void _setupReverbListener() {
+    // Subscribe ke private channel via ReverbService global
+    ReverbService().subscribe(_channelName);
 
-    final scheme = kReverbUseTls ? 'wss' : 'ws';
-    final url = Uri.parse(
-      '$scheme://${getReverbHost()}:$kReverbWsPort/app/$kReverbAppKey'
-      '?protocol=7&client=flutter&version=1.0.0&flash=false',
-    );
+    // Pantau status koneksi ReverbService
+    _isConnected = ReverbService().isConnected;
 
-    debugPrint('[Reverb] Connecting → $url');
+    _reverbSub = ReverbService().events.listen((evt) {
+      if (!mounted) return;
 
-    try {
-      _ws = WebSocketChannel.connect(url);
-    } catch (e) {
-      debugPrint('[Reverb] Connect error: $e');
-      _scheduleReconnect();
-      return;
-    }
-
-    _wsSub = _ws!.stream.listen(
-      _onMessage,
-      onError: (err) {
-        debugPrint('[Reverb] Stream error: $err');
-        _onDisconnect();
-      },
-      onDone: () {
-        debugPrint('[Reverb] Connection closed');
-        _onDisconnect();
-      },
-      cancelOnError: true,
-    );
-  }
-
-  void _onMessage(dynamic raw) {
-    try {
-      final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      final event = msg['event'] as String? ?? '';
-      final dataRaw = msg['data'];
-      // Pusher membungkus 'data' sebagai string JSON
-      final data = dataRaw is String && dataRaw.isNotEmpty
-          ? jsonDecode(dataRaw) as Map<String, dynamic>
-          : (dataRaw is Map<String, dynamic> ? dataRaw : <String, dynamic>{});
-
-      switch (event) {
-        case 'pusher:connection_established':
-          _socketId = data['socket_id'] as String?;
-          debugPrint('[Reverb] Connected, socket_id=$_socketId');
-          if (mounted) setState(() => _isConnected = true);
-          _subscribeChannel();
-          _startPing();
-          break;
-
-        case 'pusher_internal:subscription_succeeded':
-          debugPrint('[Reverb] Subscribed to ${msg['channel']}');
-          break;
-
-        case 'pusher:ping':
-          _send({'event': 'pusher:pong', 'data': {}});
-          break;
-
-        case 'pusher:pong':
-          break;
-
-        case 'pusher:error':
-          debugPrint('[Reverb] Pusher error: $data');
-          break;
-
-        case 'MessageSent':
-          _handleNewMessage(data);
-          break;
-
-        default:
-          if (event.startsWith('pusher')) {
-            debugPrint('[Reverb] Internal: $event');
-          }
-      }
-    } catch (e) {
-      debugPrint('[Reverb] Parse error: $e | raw=$raw');
-    }
-  }
-
-  /// Subscribe ke private channel — perlu auth signature dari endpoint backend
-  Future<void> _subscribeChannel() async {
-    if (_socketId == null) return;
-    try {
-      final response = await http.post(
-        Uri.parse('${getBaseUrl()}/api/broadcasting/auth'),
-        headers: {
-          'Authorization': 'Bearer $_authToken',
-          'Accept': 'application/json',
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: {
-          'channel_name': _channelName,
-          'socket_id': _socketId!,
-        },
-      );
-
-      if (response.statusCode != 200) {
-        debugPrint('[Reverb Auth] Gagal: ${response.statusCode} ${response.body}');
-        return;
+      // Update status koneksi
+      if (!_isConnected && ReverbService().isConnected) {
+        setState(() => _isConnected = true);
       }
 
-      final auth = (jsonDecode(response.body) as Map<String, dynamic>)['auth'] as String?;
-      if (auth == null) return;
+      if (evt.channel == _channelName && evt.event == 'MessageSent') {
+        final isFromAdmin = evt.data['is_from_admin'] as bool? ?? true;
+        if (!isFromAdmin) return; // Pesan sendiri sudah ditambah optimistis
 
-      _send({
-        'event': 'pusher:subscribe',
-        'data': {
-          'channel': _channelName,
-          'auth': auth,
-        },
+        final newId = evt.data['id']?.toString() ?? '';
+        // Hindari duplikat
+        if (_messages.any((m) => m.id == newId)) return;
+
+        final msg = ChatMessageModel(
+          id:        newId,
+          sender:    'Pengurus Pesantren',
+          text:      evt.data['pesan'] as String? ?? '',
+          timestamp: DateTime.now(),
+          isMe:      false,
+        );
+        setState(() => _messages.add(msg));
+        _scrollToBottom();
+      }
+    });
+
+    // Cek status koneksi setiap 2 detik (untuk update indikator)
+    Timer.periodic(const Duration(seconds: 2), (t) {
+      if (!mounted) { t.cancel(); return; }
+      final connected = ReverbService().isConnected;
+      if (connected != _isConnected) {
+        setState(() => _isConnected = connected);
+        // Saat baru terhubung, subscribe ulang channel
+        if (connected) ReverbService().subscribe(_channelName);
+      }
+    });
+  }
+
+  // Polling fallback: muat pesan baru setiap 10 detik jika WebSocket tidak terhubung
+  void _startPolling() {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+      if (!mounted) return;
+      if (_isConnected) return; // WebSocket aktif, tidak perlu polling
+
+      final msgs = await ApiService().getChatHistory(_parentId);
+      if (!mounted || msgs.isEmpty) return;
+
+      final latestId = msgs.last.id;
+      if (latestId == _lastMessageId) return; // Tidak ada pesan baru
+
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(msgs);
+        _lastMessageId = latestId;
       });
-    } catch (e) {
-      debugPrint('[Reverb Auth] Error: $e');
-    }
-  }
-
-  void _handleNewMessage(Map<String, dynamic> data) {
-    final isFromAdmin = data['is_from_admin'] as bool? ?? true;
-    // Mobile hanya menambahkan pesan dari admin via WebSocket
-    // (pesan wali sudah ditambah optimistis saat kirim)
-    if (!isFromAdmin) return;
-
-    final msg = ChatMessageModel(
-      id:        (data['id'] ?? '').toString(),
-      sender:    'Admin Pesantren',
-      text:      data['pesan'] as String? ?? '',
-      timestamp: DateTime.now(),
-      isMe:      false,
-    );
-    if (!mounted) return;
-    setState(() => _messages.add(msg));
-    _scrollToBottom();
-  }
-
-  void _send(Map<String, dynamic> payload) {
-    try {
-      _ws?.sink.add(jsonEncode(payload));
-    } catch (e) {
-      debugPrint('[Reverb] Send error: $e');
-    }
-  }
-
-  void _startPing() {
-    _pingTimer?.cancel();
-    _pingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _send({'event': 'pusher:ping', 'data': {}});
+      _scrollToBottom();
     });
   }
 
-  void _onDisconnect() {
-    _pingTimer?.cancel();
-    if (mounted) setState(() => _isConnected = false);
-    _scheduleReconnect();
-  }
-
-  void _scheduleReconnect() {
-    if (_disposed) return;
-    _reconnectTimer?.cancel();
-    _reconnectTimer = Timer(const Duration(seconds: 3), () {
-      if (!_disposed) _connectReverb();
-    });
-  }
-
-  // ─── Kirim pesan ─────────────────────────────────────────────────────
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
     if (text.isEmpty || _parentId.isEmpty) return;
@@ -266,7 +168,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ─── Utilities ────────────────────────────────────────────────────────
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -292,17 +193,15 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    _disposed = true;
-    _pingTimer?.cancel();
-    _reconnectTimer?.cancel();
-    _wsSub?.cancel();
-    _ws?.sink.close(ws_status.normalClosure);
+    WidgetsBinding.instance.removeObserver(this);
+    _reverbSub?.cancel();
+    _pollingTimer?.cancel();
+    ReverbService().unsubscribe(_channelName);
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  // ═════════════════════════════ BUILD ═════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -344,7 +243,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Admin Pesantren',
+                          'Pengurus Pesantren',
                           style: AppTheme.headline.copyWith(fontSize: 15, fontWeight: FontWeight.w700),
                         ),
                         Row(
@@ -354,12 +253,12 @@ class _ChatScreenState extends State<ChatScreen> {
                               width: 7, height: 7,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: _isConnected ? const Color(0xFF22c55e) : Colors.grey,
+                                color: _isConnected ? const Color(0xFF22c55e) : Colors.orange,
                               ),
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              _isConnected ? 'Online · Real-time' : 'Menghubungkan…',
+                              _isConnected ? 'Terhubung · Waktu Nyata' : 'Mode Biasa · Periksa setiap 10 detik',
                               style: AppTheme.label.copyWith(
                                 fontSize: 11,
                                 color: _isConnected
@@ -426,7 +325,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 style: AppTheme.headline.copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Text(
-              'Mulai percakapan dengan admin pesantren',
+              'Mulai percakapan dengan pengurus pesantren',
               textAlign: TextAlign.center,
               style: AppTheme.body.copyWith(fontSize: 13, color: AppTheme.onSurfaceVariant),
             ),

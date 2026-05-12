@@ -175,10 +175,8 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   image: DecorationImage(
-                    image: NetworkImage(
-                      'https://lh3.googleusercontent.com/aida-public/AB6AXuAJDpgMtUB7QyTIReKxLclqds2h7vqdBoRAUvwi-JbVHmJdzb5LutGzd_PJAOk9vn2AYQbbiecx1VmBZA5r2BY-L-MRHjkJQHRDCdOsLpuiYs30Pa-2MLJEhF82hW16JioiDhqogxZfqn9rgMFkKkTVlNRUEw65K-bgSKsA1Olo1ZDqCTZYWY7KrAE_IltiRHHZQAn6mpoRt-zCS3HRdpT5b-_CcBbCUISDgyfus1hYlGNUwLVkWXAF7sow33rCpH30k2_yMOoPgV6g',
-                    ),
-                    fit: BoxFit.cover,
+                    image: AssetImage('assets/images/logo.png'),
+                    fit: BoxFit.contain,
                   ),
                 ),
               ),

@@ -8,27 +8,18 @@ import 'package:mobile_miftahul_ulumv2/models/izin_model.dart';
 
 // ======================= BAGIAN KEDUA: Fungsi Umum =======================
 
-// Konfigurasi server — ganti sesuai environment:
-//   Emulator Android : 'http://10.0.2.2:8000'
-//   Real device (LAN): 'http://192.168.x.x:8000'
-//   Windows host     : 'http://localhost:8000'
+// Konfigurasi server — VPS Production
+const String _kVpsBaseUrl = 'http://103.157.27.237:8000';
+
 String getBaseUrl() {
-  if (kIsWeb) {
-    return 'http://127.0.0.1:8000'; // Untuk Flutter Web
-  }
-  // Pakai 127.0.0.1 jika sudah jalankan:
-  //   adb reverse tcp:8000 tcp:8000
-  //   adb reverse tcp:8080 tcp:8080
-  // Alternatif (real device + WiFi same LAN): 'http://192.168.x.x:8000'
-  // Alternatif (emulator Android): 'http://10.0.2.2:8000'
-  return 'http://127.0.0.1:8000';
+  return _kVpsBaseUrl;
 }
 
 // ─── Konfigurasi Laravel Reverb (WebSocket) ───────────────────
 // Harus sinkron dengan nilai di .env Laravel (REVERB_*)
 const String kReverbAppKey = '5e3xxduirsctb4kkd899';
-const int    kReverbWsPort = 8080;
-const bool   kReverbUseTls = false; // REVERB_SCHEME=http
+const int kReverbWsPort = 8080;
+const bool kReverbUseTls = false; // REVERB_SCHEME=http
 
 /// Host Reverb — sama dengan host API tapi port 8080
 String getReverbHost() {
@@ -61,10 +52,7 @@ Future<Map<String, dynamic>> loginUser(String email, String password) async {
       };
     }
   } catch (e) {
-    return {
-      'success': false,
-      'message': 'Terjadi kesalahan: $e',
-    };
+    return {'success': false, 'message': 'Terjadi kesalahan: $e'};
   }
 }
 
@@ -133,7 +121,10 @@ Future<Map<String, dynamic>> verifyResetPasswordAPI(
     } else {
       return {
         'success': false,
-        'message': responseData['message'] ?? responseData['error'] ?? 'Gagal reset password',
+        'message':
+            responseData['message'] ??
+            responseData['error'] ??
+            'Gagal reset password',
         'errors': responseData['errors'] ?? {},
       };
     }
@@ -160,7 +151,10 @@ class ApiService {
 
   Future<List<PengumumanModel>> getPengumuman() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/pengumuman'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/pengumuman'),
+        headers: _headers,
+      );
 
       if (response.statusCode == 200) {
         final dynamic decoded = json.decode(response.body);
@@ -168,7 +162,8 @@ class ApiService {
 
         if (decoded is List) {
           data = decoded;
-        } else if (decoded is Map<String, dynamic> && decoded.containsKey('data')) {
+        } else if (decoded is Map<String, dynamic> &&
+            decoded.containsKey('data')) {
           data = decoded['data'] as List<dynamic>;
         } else {
           data = [];
@@ -186,7 +181,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> getSantriById(String santriId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/santri/$santriId'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/santri/$santriId'),
+        headers: _headers,
+      );
       if (response.statusCode == 200) return json.decode(response.body);
       return {'success': false, 'message': 'Gagal mengambil data'};
     } catch (e) {
@@ -196,7 +194,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> getSantriByOrtu(String parentId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/santri/ortu/$parentId'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/santri/ortu/$parentId'),
+        headers: _headers,
+      );
       if (response.statusCode == 200) return json.decode(response.body);
       return {'success': false, 'message': 'Gagal mengambil data'};
     } catch (e) {
@@ -208,7 +209,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> getKehadiranMingguan(String santriId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/kehadiran-mingguan/$santriId'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/kehadiran-mingguan/$santriId'),
+        headers: _headers,
+      );
       if (response.statusCode == 200) return json.decode(response.body);
       return {'success': false, 'message': 'Gagal mengambil data'};
     } catch (e) {
@@ -218,7 +222,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> getKehadiranSummary(String santriId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/kehadiran-bytime/$santriId'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/kehadiran-bytime/$santriId'),
+        headers: _headers,
+      );
       if (response.statusCode == 200) return json.decode(response.body);
       return {'success': false, 'message': 'Gagal mengambil data'};
     } catch (e) {
@@ -230,7 +237,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> getPerizinan(String santriId) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/perizinan/$santriId'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/perizinan/$santriId'),
+        headers: _headers,
+      );
       if (response.statusCode == 200) return json.decode(response.body);
       return {'success': false, 'message': 'Gagal mengambil data'};
     } catch (e) {
@@ -249,7 +259,10 @@ class ApiService {
         return {'success': true, 'message': 'Izin berhasil diajukan'};
       }
       final decoded = json.decode(response.body);
-      return {'success': false, 'message': decoded['message'] ?? 'Gagal mengajukan izin'};
+      return {
+        'success': false,
+        'message': decoded['message'] ?? 'Gagal mengajukan izin',
+      };
     } catch (e) {
       return {'success': false, 'message': e.toString()};
     }
@@ -266,7 +279,11 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final List<dynamic> decoded = json.decode(response.body);
-        return decoded.map((item) => ChatMessageModel.fromJson(item as Map<String, dynamic>)).toList();
+        return decoded
+            .map(
+              (item) => ChatMessageModel.fromJson(item as Map<String, dynamic>),
+            )
+            .toList();
       }
       return [];
     } catch (e) {
@@ -312,7 +329,9 @@ class ApiService {
         queryParams['kategori'] = kategori.trim();
       }
 
-      final uri = Uri.parse('$baseUrl/faq').replace(queryParameters: queryParams.isEmpty ? null : queryParams);
+      final uri = Uri.parse(
+        '$baseUrl/faq',
+      ).replace(queryParameters: queryParams.isEmpty ? null : queryParams);
       final response = await http.get(uri, headers: _headers);
 
       if (response.statusCode == 200) {
@@ -337,7 +356,10 @@ class ApiService {
   /// Ambil detail satu FAQ berdasarkan [id].
   Future<FaqModel?> getFaqById(int id) async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/faq/$id'), headers: _headers);
+      final response = await http.get(
+        Uri.parse('$baseUrl/faq/$id'),
+        headers: _headers,
+      );
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body) as Map<String, dynamic>;

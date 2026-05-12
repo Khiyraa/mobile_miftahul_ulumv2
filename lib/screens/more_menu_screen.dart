@@ -96,14 +96,29 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
                 child: Container(color: Colors.transparent),
               ),
             ),
-            title: Text(
-              'Miftahul Ulum Kalisat',
-              style: AppTheme.headline.copyWith(
-                fontWeight: FontWeight.w900,
-                fontSize: 18,
-                letterSpacing: -1,
-                color: AppTheme.primary,
-              ),
+            title: Row(
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppTheme.primaryContainer, width: 2),
+                  ),
+                  child: const CircleAvatar(
+                    radius: 18,
+                    backgroundImage: AssetImage('assets/images/logo.png'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Miftahul Ulum Kalisat',
+                  style: AppTheme.headline.copyWith(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                    letterSpacing: -1,
+                    color: AppTheme.primary,
+                  ),
+                ),
+              ],
             ),
             actions: [
               IconButton(
@@ -456,8 +471,11 @@ class _MoreMenuScreenState extends State<MoreMenuScreen> {
                             child: const Text('Batal'),
                           ),
                           FilledButton(
-                            onPressed: () {
+                            onPressed: () async {
                               SantriApiService.clearAllCache();
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.clear();
+                              if (!context.mounted) return;
                               Navigator.of(ctx).pop();
                               Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
                             },

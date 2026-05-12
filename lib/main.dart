@@ -6,23 +6,30 @@ import 'package:mobile_miftahul_ulumv2/screens/login_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/forgot_password_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/verify_code_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/santri_detail_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('id_ID', null);
-  runApp(const MyApp());
+
+  final prefs = await SharedPreferences.getInstance();
+  final parentId = prefs.getString('parentId') ?? '';
+  final isLoggedIn = parentId.isNotEmpty;
+
+  runApp(MyApp(initialRoute: isLoggedIn ? '/home' : '/login'));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final String initialRoute;
+  const MyApp({super.key, required this.initialRoute});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Mobile Miftahul Ulum',
+      title: 'Miftahul Ulum Kalisat',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme,
-      initialRoute: '/login',
+      initialRoute: initialRoute,
       routes: {
         '/login': (context) => const LoginScreen(),
         '/home': (context) => const HomeScreen(),
@@ -30,7 +37,6 @@ class MyApp extends StatelessWidget {
         '/verify_code': (context) => const VerifyCodeScreen(),
       },
       onGenerateRoute: (settings) {
-        // Handle dynamic routes like /santri_detail/:id
         if (settings.name != null && settings.name!.startsWith('/santri_detail/')) {
           final santriId = settings.name!.replaceFirst('/santri_detail/', '');
           return MaterialPageRoute(
