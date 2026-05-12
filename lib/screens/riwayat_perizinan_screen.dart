@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
 import 'package:mobile_miftahul_ulumv2/models/perizinan.dart';
 import 'package:mobile_miftahul_ulumv2/models/santri.dart';
+import 'package:mobile_miftahul_ulumv2/services/reverb_service.dart';
 import 'package:mobile_miftahul_ulumv2/services/santri_api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,6 +23,9 @@ class _RiwayatPerizinanScreenState extends State<RiwayatPerizinanScreen>
   String? _error;
   String _filterStatus = 'semua';
   late TabController _tabController;
+
+  StreamSubscription<ReverbEvent>? _reverbSub;
+  final List<String> _subscribedChannels = [];
 
   final List<Map<String, dynamic>> _tabs = [
     {'key': 'semua', 'label': 'Semua'},
@@ -43,6 +48,10 @@ class _RiwayatPerizinanScreenState extends State<RiwayatPerizinanScreen>
 
   @override
   void dispose() {
+    _reverbSub?.cancel();
+    for (final ch in _subscribedChannels) {
+      ReverbService().unsubscribe(ch);
+    }
     _tabController.dispose();
     super.dispose();
   }
@@ -63,6 +72,7 @@ class _RiwayatPerizinanScreenState extends State<RiwayatPerizinanScreen>
       }
       _santriList = santriResp.data!;
       print('DEBUG RIWAYAT: _santriList length = ${_santriList.length}');
+      _setupReverbListeners();
 
       List<Perizinan> all = [];
       for (var santri in _santriList) {
@@ -82,6 +92,63 @@ class _RiwayatPerizinanScreenState extends State<RiwayatPerizinanScreen>
       print('DEBUG RIWAYAT: error = $e');
       if (mounted) setState(() { _isLoading = false; _error = e.toString(); });
     }
+  }
+
+  void _setupReverbListeners() {
+    // Bersihkan subscription & channel lama sebelum re-subscribe
+    _reverbSub?.cancel();
+    for (final ch in _subscribedChannels) {
+      ReverbService().unsubscribe(ch);
+    }
+    _subscribedChannels.clear();
+
+    // Subscribe ke private-santri.{id} untuk setiap anak dari wali ini
+    for (final santri in _santriList) {
+      final channel = 'private-santri.${santri.idSantri}';
+      ReverbService().subscribe(channel);
+      _subscribedChannels.add(channel);
+    }
+
+    _reverbSub = ReverbService().events.listen((evt) {
+      if (!_subscribedChannels.contains(evt.channel)) return;
+      if (evt.event != 'PermissionStatusUpdated') return;
+      if (!mounted) return;
+
+      try {
+        final updated = Perizinan.fromJson(evt.data);
+        setState(() {
+          final idx = _allPerizinan.indexWhere((p) => p.idPerizinan == updated.idPerizinan);
+          if (idx >= 0) {
+            _allPerizinan[idx] = updated;
+          } else {
+            _allPerizinan.insert(0, updated);
+          }
+        });
+
+        Color snackColor;
+        switch (updated.status.toLowerCase()) {
+          case 'disetujui':
+            snackColor = const Color(0xFF0D9488);
+            break;
+          case 'ditolak':
+            snackColor = AppTheme.error;
+            break;
+          default:
+            snackColor = AppTheme.outline;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Status izin ${updated.jenisIzin}: ${updated.statusLabel}'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: snackColor,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      } catch (e) {
+        debugPrint('PermissionStatusUpdated parse error (riwayat): $e');
+      }
+    });
   }
 
   List<Perizinan> get _filtered {

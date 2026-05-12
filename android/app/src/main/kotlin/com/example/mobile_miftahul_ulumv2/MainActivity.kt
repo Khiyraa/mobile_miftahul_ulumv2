@@ -1,4 +1,4 @@
-package com.example.mobile_miftahul_ulumv2
+package com.miftahulUlum.mobileApp
 
 import io.flutter.embedding.android.FlutterActivity
 

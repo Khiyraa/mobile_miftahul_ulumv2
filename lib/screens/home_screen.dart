@@ -16,7 +16,7 @@ import 'package:mobile_miftahul_ulumv2/services/reverb_service.dart';
 import 'package:mobile_miftahul_ulumv2/services/santri_api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const MoreMenuScreen(),
     ];
     _initReverb();
+    _initFCM();
   }
 
   /// Inisialisasi koneksi WebSocket Reverb (sekali saja, sepanjang sesi).
@@ -48,6 +49,52 @@ class _HomeScreenState extends State<HomeScreen> {
     final token = prefs.getString('authToken') ?? 'dummy-token-$parentId';
     if (parentId.isEmpty) return;
     ReverbService().connect(authToken: token);
+  }
+
+  /// Inisialisasi FCM: minta izin notifikasi + tangani pesan saat app terbuka.
+  Future<void> _initFCM() async {
+    // Minta izin notifikasi (Android 13+, iOS)
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Pesan masuk saat app sedang terbuka (foreground)
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (!mounted) return;
+      final notif = message.notification;
+      if (notif == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.notifications_active, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${notif.title ?? 'Pengumuman'}: ${notif.body ?? ''}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.primary,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
+    });
+
+    // Notifikasi di-tap saat app di background (bukan killed)
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (!mounted) return;
+      // Arahkan ke tab Beranda agar pengumuman terlihat
+      setState(() => _currentIndex = 0);
+    });
   }
 
   @override
@@ -159,6 +206,8 @@ class _HomeContentState extends State<_HomeContent> {
   List<PengumumanModel> _pengumumanList = [];
   bool _isLoadingPengumuman = true;
   StreamSubscription<ReverbEvent>? _reverbSub;
+  Timer? _refreshTimer;
+  String? _subscribedSantriChannel;
 
   // Variabel Dinamis untuk UI
   String _namaOrtu = 'Bapak/Ibu'; // Default, akan dioverride dari API
@@ -175,12 +224,17 @@ class _HomeContentState extends State<_HomeContent> {
     _loadSantriData();
     _loadPengumuman();
     _setupReverbListener();
+    _startAutoRefresh();
   }
 
   @override
   void dispose() {
     _reverbSub?.cancel();
+    _refreshTimer?.cancel();
     ReverbService().unsubscribe('pengumuman');
+    if (_subscribedSantriChannel != null) {
+      ReverbService().unsubscribe(_subscribedSantriChannel!);
+    }
     super.dispose();
   }
 
@@ -201,20 +255,23 @@ class _HomeContentState extends State<_HomeContent> {
     }
   }
 
-  /// Subscribe ke channel `pengumuman` & listen event AnnouncementCreated
+  /// Subscribe ke channel publik `pengumuman` dan dengarkan event real-time.
+  /// Juga menangani PermissionStatusUpdated dari channel private santri.
   void _setupReverbListener() {
     ReverbService().subscribe('pengumuman');
-    _reverbSub = ReverbService().events.listen((evt) {
+
+    _reverbSub = ReverbService().events.listen((evt) async {
+      if (!mounted) return;
+
+      // ── Pengumuman baru ──────────────────────────────────────────────
       if (evt.channel == 'pengumuman' && evt.event == 'AnnouncementCreated') {
         try {
           final newPengumuman = PengumumanModel.fromJson(evt.data);
           if (!mounted) return;
-          // Hindari duplikat
           if (_pengumumanList.any((p) => p.id == newPengumuman.id)) return;
           setState(() {
             _pengumumanList = [newPengumuman, ..._pengumumanList];
           });
-          // Toast singkat
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('📢 Pengumuman baru: ${newPengumuman.judul}'),
@@ -224,7 +281,47 @@ class _HomeContentState extends State<_HomeContent> {
           );
         } catch (e) {
           debugPrint('Pengumuman parse error: $e');
+          // Fallback: reload seluruh list dari API
+          _loadPengumuman();
         }
+        return;
+      }
+
+      // ── Status perizinan berubah ─────────────────────────────────────
+      if (evt.event == 'PermissionStatusUpdated' && _selectedSantriId != null) {
+        try {
+          final result = await SantriApiService.getPerizinanSetahun(_selectedSantriId!);
+          if (!mounted || !result.success) return;
+          setState(() => _perizinanList = result.data);
+          final status = evt.data['status']?.toString() ?? '';
+          if (status.isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('📋 Status izin diperbarui: ${status.toUpperCase()}'),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 3),
+                backgroundColor: AppTheme.primary,
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('PermissionStatusUpdated error: $e');
+        }
+      }
+    });
+  }
+
+  /// Polling setiap 30 detik sebagai safety net jika WebSocket tidak terhubung.
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      if (!mounted) return;
+      // Refresh pengumuman
+      _loadPengumuman();
+      // Refresh perizinan jika santriId sudah diketahui
+      if (_selectedSantriId != null) {
+        final result = await SantriApiService.getPerizinanSetahun(_selectedSantriId!);
+        if (!mounted || !result.success) return;
+        setState(() => _perizinanList = result.data);
       }
     });
   }
@@ -285,6 +382,17 @@ class _HomeContentState extends State<_HomeContent> {
 
   Future<void> _loadSantriDetail(String santriId) async {
     setState(() => _isLoadingSantri = true);
+
+    // Subscribe ke channel santri agar PermissionStatusUpdated diterima
+    final newChannel = 'private-santri.$santriId';
+    if (_subscribedSantriChannel != null && _subscribedSantriChannel != newChannel) {
+      ReverbService().unsubscribe(_subscribedSantriChannel!);
+    }
+    if (_subscribedSantriChannel != newChannel) {
+      _subscribedSantriChannel = newChannel;
+      ReverbService().subscribe(newChannel);
+    }
+
     try {
       final results = await Future.wait([
         SantriApiService.getKehadiranByTime(santriId),
