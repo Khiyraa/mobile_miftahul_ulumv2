@@ -27,6 +27,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   StreamSubscription<ReverbEvent>? _reverbSub;
   Timer? _pollingTimer;
+  Timer? _statusTimer;
   String? _lastMessageId;
 
   String get _channelName => 'private-chat.$_parentId';
@@ -70,57 +71,51 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _setupReverbListener() {
-    // Subscribe ke private channel via ReverbService global
     ReverbService().subscribe(_channelName);
-
-    // Pantau status koneksi ReverbService
     _isConnected = ReverbService().isConnected;
 
     _reverbSub = ReverbService().events.listen((evt) {
       if (!mounted) return;
 
-      // Update status koneksi
-      if (!_isConnected && ReverbService().isConnected) {
-        setState(() => _isConnected = true);
-      }
-
       if (evt.channel == _channelName && evt.event == 'MessageSent') {
-        final isFromAdmin = evt.data['is_from_admin'] as bool? ?? true;
+        // is_from_admin bisa datang sebagai bool true/false atau int 1/0 dari PHP
+        final raw = evt.data['is_from_admin'];
+        final isFromAdmin = raw == true || raw == 1;
         if (!isFromAdmin) return; // Pesan sendiri sudah ditambah optimistis
 
         final newId = evt.data['id']?.toString() ?? '';
-        // Hindari duplikat
-        if (_messages.any((m) => m.id == newId)) return;
+        if (_messages.any((m) => m.id == newId)) return; // Hindari duplikat
 
         final msg = ChatMessageModel(
           id:        newId,
           sender:    'Pengurus Pesantren',
           text:      evt.data['pesan'] as String? ?? '',
-          timestamp: DateTime.now(),
+          timestamp: DateTime.tryParse(evt.data['created_at'] as String? ?? '')?.toLocal() ?? DateTime.now(),
           isMe:      false,
         );
-        setState(() => _messages.add(msg));
+        setState(() {
+          _messages.add(msg);
+          _lastMessageId = newId;
+        });
         _scrollToBottom();
       }
     });
 
-    // Cek status koneksi setiap 2 detik (untuk update indikator)
-    Timer.periodic(const Duration(seconds: 2), (t) {
-      if (!mounted) { t.cancel(); return; }
+    // Cek status koneksi setiap 2 detik dan re-subscribe jika baru konek
+    _statusTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
       final connected = ReverbService().isConnected;
       if (connected != _isConnected) {
         setState(() => _isConnected = connected);
-        // Saat baru terhubung, subscribe ulang channel
         if (connected) ReverbService().subscribe(_channelName);
       }
     });
   }
 
-  // Polling fallback: muat pesan baru setiap 10 detik jika WebSocket tidak terhubung
+  // Polling ringan setiap 30 detik sebagai safety net jika WebSocket terputus
   void _startPolling() {
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
       if (!mounted) return;
-      if (_isConnected) return; // WebSocket aktif, tidak perlu polling
 
       final msgs = await ApiService().getChatHistory(_parentId);
       if (!mounted || msgs.isEmpty) return;
@@ -128,13 +123,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final latestId = msgs.last.id;
       if (latestId == _lastMessageId) return; // Tidak ada pesan baru
 
-      setState(() {
-        _messages
-          ..clear()
-          ..addAll(msgs);
-        _lastMessageId = latestId;
-      });
-      _scrollToBottom();
+      // Append-only: tambahkan pesan yang belum ada (hindari hapus pesan optimistis)
+      final existingIds = _messages.map((m) => m.id).toSet();
+      final incoming = msgs.where((m) => !existingIds.contains(m.id)).toList();
+
+      if (incoming.isNotEmpty) {
+        setState(() {
+          _messages.addAll(incoming);
+        });
+        _scrollToBottom();
+      }
+      _lastMessageId = latestId;
     });
   }
 
@@ -156,7 +155,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     final success = await ApiService().sendMessage(_parentId, text);
 
-    if (!success && mounted) {
+    if (!mounted) return;
+    if (success) {
+      // Ganti optimistic message (temp ID) dengan data asli dari server
+      await _loadMessages();
+    } else {
       setState(() => _messages.remove(optimistic));
       _messageController.text = text;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -180,15 +183,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     });
   }
 
-  String _formatTime(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  String _formatTime(DateTime dt) {
+    final local = dt.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
 
   String _formatDate(DateTime dt) {
+    final local = dt.toLocal();
     const months = [
       'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
       'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
     ];
-    return '${dt.day} ${months[dt.month - 1]} ${dt.year}';
+    return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
 
   @override
@@ -196,6 +202,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _reverbSub?.cancel();
     _pollingTimer?.cancel();
+    _statusTimer?.cancel();
     ReverbService().unsubscribe(_channelName);
     _messageController.dispose();
     _scrollController.dispose();
