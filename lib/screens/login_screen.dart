@@ -4,6 +4,7 @@ import 'package:mobile_miftahul_ulumv2/screens/forgot_password_screen.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -89,6 +90,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           await prefs.setString('token', token);
           // Token untuk auth WebSocket Reverb
           await prefs.setString('authToken', token);
+          final fcmToken = await FirebaseMessaging.instance.getToken();
+          if (fcmToken != null) {
+            await ApiService().saveFcmToken(
+              authToken: token,
+              fcmToken: fcmToken,
+            );
+          }
         } else if (akun != null) {
           // Fallback dari branch chat jika token dari API kosong
           final idAkun = akun['id_akun']?.toString() ?? '';
