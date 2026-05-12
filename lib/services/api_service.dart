@@ -373,4 +373,21 @@ class ApiService {
       return null;
     }
   }
+  Future<bool> saveFcmToken({required String authToken, required String fcmToken}) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/fcm-token'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $authToken',
+        },
+        body: jsonEncode({'fcm_token': fcmToken}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('saveFcmToken error: $e');
+      return false;
+    }
+  }
 }

@@ -7,7 +7,13 @@ import 'package:mobile_miftahul_ulumv2/screens/forgot_password_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/verify_code_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/santri_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+}
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('id_ID', null);
