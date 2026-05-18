@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:mobile_miftahul_ulumv2/core/theme/app_theme.dart';
@@ -11,8 +12,11 @@ import 'package:mobile_miftahul_ulumv2/screens/chat_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/more_menu_screen.dart';
 import 'package:mobile_miftahul_ulumv2/screens/santri_detail_screen.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
+import 'package:mobile_miftahul_ulumv2/services/reverb_service.dart';
 import 'package:mobile_miftahul_ulumv2/services/santri_api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,29 +27,106 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  late final List<Widget> _pages;
 
-  final List<Widget> _pages = [
-    const _HomeContent(),
-    const JadwalShalatScreen(),
-    const ChatScreen(),
-    const MoreMenuScreen(), // Hub menu untuk semua fitur
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _pages = [
+      _HomeContent(onGoToChat: () => setState(() => _currentIndex = 2)),
+      const JadwalShalatScreen(),
+      const ChatScreen(),
+      const MoreMenuScreen(),
+    ];
+    _initReverb();
+    _initFCM();
+  }
+
+  /// Inisialisasi koneksi WebSocket Reverb (sekali saja, sepanjang sesi).
+  Future<void> _initReverb() async {
+    // Connect dulu dengan token kosong
+    ReverbService().connect(authToken: '');
+
+    // Update token setelah dapat dari SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final parentId = prefs.getString('parentId') ?? '';
+    final token = prefs.getString('authToken') ?? 'dummy-token-$parentId';
+    if (parentId.isEmpty) return;
+
+    // Re-connect dengan token yang benar
+    ReverbService().disconnect();
+    ReverbService().connect(authToken: token);
+  }
+
+  /// Inisialisasi FCM: minta izin notifikasi + tangani pesan saat app terbuka.
+  Future<void> _initFCM() async {
+    // Minta izin notifikasi (Android 13+, iOS)
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Pesan masuk saat app sedang terbuka (foreground)
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      if (!mounted) return;
+      final notif = message.notification;
+      if (notif == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(
+                Icons.notifications_active,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${notif.title ?? 'Pengumuman'}: ${notif.body ?? ''}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.primary,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      );
+    });
+
+    // Notifikasi di-tap saat app di background (bukan killed)
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      if (!mounted) return;
+      // Arahkan ke tab Beranda agar pengumuman terlihat
+      setState(() => _currentIndex = 0);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.surface,
       extendBody: true, // Allow content behind the bottom nav bar
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      body: IndexedStack(index: _currentIndex, children: _pages),
       bottomNavigationBar: ClipRRect(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
-            padding: const EdgeInsets.only(bottom: 24, top: 12, left: 16, right: 16),
+            padding: const EdgeInsets.only(
+              bottom: 24,
+              top: 12,
+              left: 16,
+              right: 16,
+            ),
             decoration: BoxDecoration(
               color: Colors.white.withValues(alpha: 0.9), // bg-white/90
               boxShadow: [
@@ -54,16 +135,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   blurRadius: 24,
                   offset: const Offset(0, -4),
                   spreadRadius: -4,
-                )
+                ),
               ],
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _buildNavItem(0, 'home', 'Home'),
-                _buildNavItem(1, 'auto_stories', 'Prayer'),
-                _buildNavItem(2, 'chat_bubble', 'Chat'),
-                _buildNavItem(3, 'more_horiz', 'More'),
+                _buildNavItem(0, 'home', 'Beranda'),
+                _buildNavItem(1, 'auto_stories', 'Jadwal'),
+                _buildNavItem(2, 'chat_bubble', 'Pesan'),
+                _buildNavItem(3, 'more_horiz', 'Lainnya'),
               ],
             ),
           ),
@@ -77,11 +158,20 @@ class _HomeScreenState extends State<HomeScreen> {
     // Map string to Material Icons
     IconData icon;
     switch (iconName) {
-      case 'home': icon = Icons.home; break;
-      case 'auto_stories': icon = Icons.menu_book; break; 
-      case 'chat_bubble': icon = Icons.chat_bubble; break;
-      case 'more_horiz': icon = Icons.more_horiz; break;
-      default: icon = Icons.home;
+      case 'home':
+        icon = Icons.home;
+        break;
+      case 'auto_stories':
+        icon = Icons.menu_book;
+        break;
+      case 'chat_bubble':
+        icon = Icons.chat_bubble;
+        break;
+      case 'more_horiz':
+        icon = Icons.more_horiz;
+        break;
+      default:
+        icon = Icons.home;
     }
 
     return AnimatedPressButton(
@@ -93,7 +183,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         decoration: BoxDecoration(
-          color: isActive ? AppTheme.primaryContainer.withValues(alpha: 0.1) : Colors.transparent,
+          color: isActive
+              ? AppTheme.primaryContainer.withValues(alpha: 0.1)
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -101,7 +193,9 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             Icon(
               icon,
-              color: isActive ? AppTheme.primary : AppTheme.onSurface.withValues(alpha: 0.5),
+              color: isActive
+                  ? AppTheme.primary
+                  : AppTheme.onSurface.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 4),
             Text(
@@ -110,9 +204,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontSize: 10,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 1.5, // tracking-widest
-                color: isActive ? AppTheme.primary : AppTheme.onSurface.withValues(alpha: 0.5),
+                color: isActive
+                    ? AppTheme.primary
+                    : AppTheme.onSurface.withValues(alpha: 0.5),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -121,7 +217,8 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _HomeContent extends StatefulWidget {
-  const _HomeContent();
+  final VoidCallback? onGoToChat;
+  const _HomeContent({this.onGoToChat});
 
   @override
   State<_HomeContent> createState() => _HomeContentState();
@@ -135,19 +232,19 @@ class _HomeContentState extends State<_HomeContent> {
   String? _santriNama;
   bool _isLoadingSantri = true;
 
+  // Pengumuman (state lokal agar bisa real-time push)
+  List<PengumumanModel> _pengumumanList = [];
+  bool _isLoadingPengumuman = true;
+  StreamSubscription<ReverbEvent>? _reverbSub;
+  Timer? _refreshTimer;
+  String? _subscribedSantriChannel;
+
   // Variabel Dinamis untuk UI
   String _namaOrtu = 'Bapak/Ibu'; // Default, akan dioverride dari API
   late String _tanggalHariIni;
 
-  // List Dinamis untuk Jadwal
-  final List<Map<String, dynamic>> _jadwalHariIni = [
-    {'title': 'Shubuh', 'subtitle': 'Berjamaah di Masjid', 'time': '04:15', 'isActive': true},
-    {'title': 'Dzuhur', 'subtitle': 'Istirahat & Shalat', 'time': '11:45', 'isActive': false},
-    {'title': 'Ashar', 'subtitle': 'Kajian Kitab Kuning', 'time': '15:10', 'isActive': false},
-  ];
-
-  // ID orang tua — nanti bisa diambil dari SharedPreferences setelah login
-  final String _idOrtu = '1';
+  // ID orang tua — diambil dari SharedPreferences setelah login
+  String _idOrtu = '1';
   String? _selectedSantriId;
 
   @override
@@ -155,18 +252,154 @@ class _HomeContentState extends State<_HomeContent> {
     super.initState();
     _initDate();
     _loadSantriData();
+    _loadPengumuman();
+    _setupReverbListener();
+    _startAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _reverbSub?.cancel();
+    _refreshTimer?.cancel();
+    ReverbService().unsubscribe('pengumuman');
+    if (_subscribedSantriChannel != null) {
+      ReverbService().unsubscribe(_subscribedSantriChannel!);
+    }
+    super.dispose();
+  }
+
+  /// Load pengumuman dari API + state list (bukan FutureBuilder
+  /// agar bisa di-prepend secara real-time).
+  /// Tidak perlu filter isActive — backend sudah filter is_published=true.
+  Future<void> _loadPengumuman() async {
+    try {
+      final list = await ApiService().getPengumuman();
+      if (!mounted) return;
+      setState(() {
+        _pengumumanList = list;
+        _isLoadingPengumuman = false;
+      });
+    } catch (e) {
+      debugPrint('Pengumuman load error: $e');
+      if (mounted) setState(() => _isLoadingPengumuman = false);
+    }
+  }
+
+  /// Subscribe ke channel publik `pengumuman` dan dengarkan event real-time.
+  /// Juga menangani PermissionStatusUpdated dari channel private santri.
+  void _setupReverbListener() {
+    ReverbService().subscribe('pengumuman');
+
+    _reverbSub = ReverbService().events.listen((evt) async {
+      if (!mounted) return;
+
+      // ── Pengumuman baru ──────────────────────────────────────────────
+      if (evt.channel == 'pengumuman' && evt.event == 'AnnouncementCreated') {
+        try {
+          final newPengumuman = PengumumanModel.fromJson(evt.data);
+          if (!mounted) return;
+          if (_pengumumanList.any((p) => p.id == newPengumuman.id)) return;
+          setState(() {
+            _pengumumanList = [newPengumuman, ..._pengumumanList];
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('📢 Pengumuman baru: ${newPengumuman.judul}'),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } catch (e) {
+          debugPrint('Pengumuman parse error: $e');
+          // Fallback: reload seluruh list dari API
+          _loadPengumuman();
+        }
+        return;
+      }
+
+      // ── Status perizinan berubah ─────────────────────────────────────
+      if (evt.event == 'PermissionStatusUpdated' && _selectedSantriId != null) {
+        try {
+          final result = await SantriApiService.getPerizinanSetahun(
+            _selectedSantriId!,
+          );
+          if (!mounted || !result.success) return;
+          setState(() => _perizinanList = result.data);
+          final status = evt.data['status']?.toString() ?? '';
+          if (status.isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '📋 Status izin diperbarui: ${status.toUpperCase()}',
+                ),
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 3),
+                backgroundColor: AppTheme.primary,
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('PermissionStatusUpdated error: $e');
+        }
+      }
+    });
+  }
+
+  /// Polling setiap 30 detik sebagai safety net jika WebSocket tidak terhubung.
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+      if (!mounted) return;
+      // Refresh pengumuman
+      _loadPengumuman();
+      // Refresh perizinan jika santriId sudah diketahui
+      if (_selectedSantriId != null) {
+        final result = await SantriApiService.getPerizinanSetahun(
+          _selectedSantriId!,
+        );
+        if (!mounted || !result.success) return;
+        setState(() => _perizinanList = result.data);
+      }
+    });
   }
 
   // Fungsi untuk men-generate tanggal hari ini secara dinamis
   void _initDate() {
     final now = DateTime.now();
-    final days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-    final months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    _tanggalHariIni = '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
+    final days = [
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu',
+      'Minggu',
+    ];
+    final months = [
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
+    ];
+    _tanggalHariIni =
+        '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
 
   Future<void> _loadSantriData() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final idAkun = prefs.getString('id_akun');
+      if (idAkun != null && idAkun.isNotEmpty) {
+        _idOrtu = idAkun;
+      }
+
       // 1. Ambil Nama Orang Tua secara dinamis dari ApiService yang baru
       final ortuResponse = await ApiService().getSantriByOrtu(_idOrtu);
       if (ortuResponse['success'] == true && ortuResponse['data'] != null) {
@@ -181,9 +414,13 @@ class _HomeContentState extends State<_HomeContent> {
       }
 
       // 2. Load data santri menggunakan service yang sudah ada
-      final santriResponse = await SantriApiService.getSantriByOrtuIdFromMobile(_idOrtu);
+      final santriResponse = await SantriApiService.getSantriByOrtuIdFromMobile(
+        _idOrtu,
+      );
 
-      if (santriResponse.success && santriResponse.data != null && santriResponse.data!.isNotEmpty) {
+      if (santriResponse.success &&
+          santriResponse.data != null &&
+          santriResponse.data!.isNotEmpty) {
         final santriList = santriResponse.data!;
         final firstSantri = santriList.first;
 
@@ -207,6 +444,18 @@ class _HomeContentState extends State<_HomeContent> {
 
   Future<void> _loadSantriDetail(String santriId) async {
     setState(() => _isLoadingSantri = true);
+
+    // Subscribe ke channel santri agar PermissionStatusUpdated diterima
+    final newChannel = 'private-santri.$santriId';
+    if (_subscribedSantriChannel != null &&
+        _subscribedSantriChannel != newChannel) {
+      ReverbService().unsubscribe(_subscribedSantriChannel!);
+    }
+    if (_subscribedSantriChannel != newChannel) {
+      _subscribedSantriChannel = newChannel;
+      ReverbService().subscribe(newChannel);
+    }
+
     try {
       final results = await Future.wait([
         SantriApiService.getKehadiranByTime(santriId),
@@ -230,7 +479,7 @@ class _HomeContentState extends State<_HomeContent> {
 
   void _showSantriPicker() {
     if (_santriList == null || _santriList!.isEmpty) return;
-    
+
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.surface,
@@ -249,17 +498,24 @@ class _HomeContentState extends State<_HomeContent> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Pilih Anak', style: AppTheme.headline.copyWith(fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text(
+                      'Pilih Anak',
+                      style: AppTheme.headline.copyWith(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.close, color: AppTheme.outline),
                       onPressed: () => Navigator.pop(context),
-                    )
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
               ..._santriList!.map((santri) {
-                final isSelected = santri.idSantri.toString() == _selectedSantriId;
+                final isSelected =
+                    santri.idSantri.toString() == _selectedSantriId;
                 return InkWell(
                   onTap: () {
                     Navigator.pop(context);
@@ -272,25 +528,37 @@ class _HomeContentState extends State<_HomeContent> {
                     }
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
                     decoration: BoxDecoration(
-                      color: isSelected ? AppTheme.primaryContainer.withValues(alpha: 0.15) : Colors.transparent,
+                      color: isSelected
+                          ? AppTheme.primaryContainer.withValues(alpha: 0.15)
+                          : Colors.transparent,
                     ),
                     child: Row(
                       children: [
                         Container(
-                          width: 40, height: 40,
+                          width: 40,
+                          height: 40,
                           decoration: BoxDecoration(
-                            color: isSelected ? AppTheme.primary.withValues(alpha: 0.2) : AppTheme.surfaceContainerHighest,
+                            color: isSelected
+                                ? AppTheme.primary.withValues(alpha: 0.2)
+                                : AppTheme.surfaceContainerHighest,
                             shape: BoxShape.circle,
                           ),
                           child: Center(
                             child: Text(
-                              santri.nama.isNotEmpty ? santri.nama[0].toUpperCase() : '?',
+                              santri.nama.isNotEmpty
+                                  ? santri.nama[0].toUpperCase()
+                                  : '?',
                               style: AppTheme.headline.copyWith(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
-                                color: isSelected ? AppTheme.primary : AppTheme.onSurfaceVariant,
+                                color: isSelected
+                                    ? AppTheme.primary
+                                    : AppTheme.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -304,23 +572,36 @@ class _HomeContentState extends State<_HomeContent> {
                                 santri.nama,
                                 style: AppTheme.headline.copyWith(
                                   fontSize: 16,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                  color: isSelected ? AppTheme.primary : AppTheme.onSurface,
+                                  fontWeight: isSelected
+                                      ? FontWeight.bold
+                                      : FontWeight.w600,
+                                  color: isSelected
+                                      ? AppTheme.primary
+                                      : AppTheme.onSurface,
                                 ),
                               ),
                               if (santri.kelas != null || santri.kamar != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
-                                    [if (santri.kelas != null) santri.kelas!, if (santri.kamar != null) santri.kamar!].join(' • '),
-                                    style: AppTheme.label.copyWith(fontSize: 12, color: AppTheme.outline),
+                                    [
+                                      if (santri.kelas != null) santri.kelas!,
+                                      if (santri.kamar != null) santri.kamar!,
+                                    ].join(' • '),
+                                    style: AppTheme.label.copyWith(
+                                      fontSize: 12,
+                                      color: AppTheme.outline,
+                                    ),
                                   ),
                                 ),
                             ],
                           ),
                         ),
                         if (isSelected)
-                          const Icon(Icons.check_circle, color: AppTheme.primary)
+                          const Icon(
+                            Icons.check_circle,
+                            color: AppTheme.primary,
+                          ),
                       ],
                     ),
                   ),
@@ -355,13 +636,14 @@ class _HomeContentState extends State<_HomeContent> {
               Container(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: Border.all(color: AppTheme.primaryContainer, width: 2),
+                  border: Border.all(
+                    color: AppTheme.primaryContainer,
+                    width: 2,
+                  ),
                 ),
                 child: const CircleAvatar(
                   radius: 18,
-                  backgroundImage: NetworkImage(
-                    'https://lh3.googleusercontent.com/aida-public/AB6AXuDHYXUkvohzJHjgy6KceQ9ppXBTdNXgU53Ts7tYh-WNwomG_mLU3AtlrpQNIdqklOOpst1n8HrNodF1za5vthiwUt3OvAHEU6GH8CmGOJ4hxUVu4pTylROxhRmlumI_6MFjWLQWuGjxp6CWiYLO4Utd5Yv0mSh_IvDO6zYxH-NjYzNdCAfjh8gl-hnrssQeh_1sBt1fXS1gci3GcFN4IpSH2SVUU7mLno4XljK8_YwCYAsdSB53GFoCN4YaDZ5PNc7HnNavQ7g0V3Pj',
-                  ),
+                  backgroundImage: AssetImage('assets/images/logo.png'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -373,12 +655,15 @@ class _HomeContentState extends State<_HomeContent> {
                   letterSpacing: -1,
                   color: AppTheme.primary,
                 ),
-              )
+              ),
             ],
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.notifications_none, color: AppTheme.primary),
+              icon: const Icon(
+                Icons.notifications_none,
+                color: AppTheme.primary,
+              ),
               style: IconButton.styleFrom(
                 hoverColor: AppTheme.surfaceContainerLow,
               ),
@@ -387,13 +672,12 @@ class _HomeContentState extends State<_HomeContent> {
             const SizedBox(width: 8),
           ],
         ),
-        
+
         // Main Content
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 120),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              
               // Welcome Hero with Integrated Child Switcher
               Container(
                 padding: const EdgeInsets.all(32),
@@ -431,15 +715,21 @@ class _HomeContentState extends State<_HomeContent> {
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            Icon(Icons.calendar_today, size: 14, color: AppTheme.onPrimary.withValues(alpha: 0.9)),
+                            Icon(
+                              Icons.calendar_today,
+                              size: 14,
+                              color: AppTheme.onPrimary.withValues(alpha: 0.9),
+                            ),
                             const SizedBox(width: 8),
                             Text(
                               _tanggalHariIni, // Menggunakan variabel dinamis tanggal
                               style: AppTheme.body.copyWith(
                                 fontSize: 14,
-                                color: AppTheme.onPrimary.withValues(alpha: 0.9),
+                                color: AppTheme.onPrimary.withValues(
+                                  alpha: 0.9,
+                                ),
                               ),
-                            )
+                            ),
                           ],
                         ),
                         const SizedBox(height: 20),
@@ -448,24 +738,36 @@ class _HomeContentState extends State<_HomeContent> {
                         GestureDetector(
                           onTap: () => _showSantriPicker(),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
                             decoration: BoxDecoration(
                               color: AppTheme.onPrimary.withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: AppTheme.onPrimary.withValues(alpha: 0.25), width: 1),
+                              border: Border.all(
+                                color: AppTheme.onPrimary.withValues(
+                                  alpha: 0.25,
+                                ),
+                                width: 1,
+                              ),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Container(
-                                  width: 32, height: 32,
+                                  width: 32,
+                                  height: 32,
                                   decoration: BoxDecoration(
-                                    color: AppTheme.onPrimary.withValues(alpha: 0.2),
+                                    color: AppTheme.onPrimary.withValues(
+                                      alpha: 0.2,
+                                    ),
                                     borderRadius: BorderRadius.circular(10),
                                   ),
                                   child: Center(
                                     child: Text(
-                                      _santriNama != null && _santriNama!.isNotEmpty
+                                      _santriNama != null &&
+                                              _santriNama!.isNotEmpty
                                           ? _santriNama![0].toUpperCase()
                                           : '?',
                                       style: AppTheme.headline.copyWith(
@@ -479,7 +781,8 @@ class _HomeContentState extends State<_HomeContent> {
                                 const SizedBox(width: 12),
                                 Flexible(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         _santriNama ?? 'Pilih Anak',
@@ -490,34 +793,61 @@ class _HomeContentState extends State<_HomeContent> {
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      if (_selectedSantriId != null && _santriList != null)
-                                        Builder(builder: (_) {
-                                          final santri = _santriList!.firstWhere(
-                                            (s) => s.idSantri.toString() == _selectedSantriId,
-                                            orElse: () => _santriList!.first,
-                                          );
-                                          final info = [
-                                            if (santri.kelas != null) santri.kelas!,
-                                            if (santri.kamar != null) santri.kamar!,
-                                          ].join(' • ');
-                                          return info.isNotEmpty
-                                              ? Text(
-                                                  info,
-                                                  style: AppTheme.label.copyWith(
-                                                    fontSize: 11,
-                                                    color: AppTheme.onPrimary.withValues(alpha: 0.7),
-                                                  ),
-                                                )
-                                              : const SizedBox.shrink();
-                                        }),
+                                      if (_selectedSantriId != null &&
+                                          _santriList != null)
+                                        Builder(
+                                          builder: (_) {
+                                            final santri = _santriList!
+                                                .firstWhere(
+                                                  (s) =>
+                                                      s.idSantri.toString() ==
+                                                      _selectedSantriId,
+                                                  orElse: () =>
+                                                      _santriList!.first,
+                                                );
+                                            final info = [
+                                              if (santri.kelas != null)
+                                                santri.kelas!,
+                                              if (santri.kamar != null)
+                                                santri.kamar!,
+                                            ].join(' • ');
+                                            return info.isNotEmpty
+                                                ? Text(
+                                                    info,
+                                                    style: AppTheme.label
+                                                        .copyWith(
+                                                          fontSize: 11,
+                                                          color: AppTheme
+                                                              .onPrimary
+                                                              .withValues(
+                                                                alpha: 0.7,
+                                                              ),
+                                                        ),
+                                                  )
+                                                : const SizedBox.shrink();
+                                          },
+                                        ),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(width: 8),
-                                if (_santriList != null && _santriList!.length > 1)
-                                  Icon(Icons.swap_horiz, size: 18, color: AppTheme.onPrimary.withValues(alpha: 0.8))
+                                if (_santriList != null &&
+                                    _santriList!.length > 1)
+                                  Icon(
+                                    Icons.swap_horiz,
+                                    size: 18,
+                                    color: AppTheme.onPrimary.withValues(
+                                      alpha: 0.8,
+                                    ),
+                                  )
                                 else
-                                  Icon(Icons.person, size: 16, color: AppTheme.onPrimary.withValues(alpha: 0.6)),
+                                  Icon(
+                                    Icons.person,
+                                    size: 16,
+                                    color: AppTheme.onPrimary.withValues(
+                                      alpha: 0.6,
+                                    ),
+                                  ),
                               ],
                             ),
                           ),
@@ -530,7 +860,11 @@ class _HomeContentState extends State<_HomeContent> {
                       right: -10,
                       child: Opacity(
                         opacity: 0.1,
-                        child: Icon(Icons.change_history, size: 120, color: AppTheme.onPrimary),
+                        child: Icon(
+                          Icons.change_history,
+                          size: 120,
+                          color: AppTheme.onPrimary,
+                        ),
                       ),
                     ),
                   ],
@@ -551,39 +885,78 @@ class _HomeContentState extends State<_HomeContent> {
                         boxShadow: AppTheme.shadowSm,
                       ),
                       child: _isLoadingSantri
-                        ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
-                        : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            width: 40, height: 40,
-                            decoration: BoxDecoration(
-                              color: AppTheme.primary.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(12),
+                          ? const Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primary.withValues(
+                                      alpha: 0.1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.menu_book,
+                                    color: AppTheme.primary,
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'IBADAH',
+                                      style: AppTheme.label.copyWith(
+                                        fontSize: 12,
+                                        letterSpacing: 1.2,
+                                        color: AppTheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    Text(
+                                      _kehadiranData != null
+                                          ? '${_kehadiranData!.seminggu.persentase.toStringAsFixed(0)}%'
+                                          : '95%',
+                                      style: AppTheme.headline.copyWith(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.primary,
+                                      ),
+                                    ),
+                                    Text(
+                                      _kehadiranData != null
+                                          ? (_kehadiranData!
+                                                        .seminggu
+                                                        .persentase >=
+                                                    90
+                                                ? 'Sangat Baik'
+                                                : _kehadiranData!
+                                                          .seminggu
+                                                          .persentase >=
+                                                      70
+                                                ? 'Baik'
+                                                : 'Perlu Perhatian')
+                                          : 'Sangat Baik',
+                                      style: AppTheme.body.copyWith(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppTheme.outline,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.menu_book, color: AppTheme.primary),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('IBADAH', style: AppTheme.label.copyWith(fontSize: 12, letterSpacing: 1.2, color: AppTheme.onSurfaceVariant)),
-                              Text(
-                                _kehadiranData != null
-                                    ? '${_kehadiranData!.seminggu.persentase.toStringAsFixed(0)}%'
-                                    : '95%',
-                                style: AppTheme.headline.copyWith(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.primary),
-                              ),
-                              Text(
-                                _kehadiranData != null
-                                    ? (_kehadiranData!.seminggu.persentase >= 90 ? 'Sangat Baik' : _kehadiranData!.seminggu.persentase >= 70 ? 'Baik' : 'Perlu Perhatian')
-                                    : 'Sangat Baik',
-                                style: AppTheme.body.copyWith(fontSize: 10, fontWeight: FontWeight.w500, color: AppTheme.outline),
-                              ),
-                            ],
-                          )
-                        ],
-                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -596,39 +969,71 @@ class _HomeContentState extends State<_HomeContent> {
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: _isLoadingSantri
-                        ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))
-                        : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Container(
-                            width: 40, height: 40,
-                            decoration: BoxDecoration(
-                              color: AppTheme.secondaryContainer.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(12),
+                          ? const Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.secondaryContainer
+                                        .withValues(alpha: 0.3),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.verified_user_outlined,
+                                    color: AppTheme.secondary,
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'DISIPLIN',
+                                      style: AppTheme.label.copyWith(
+                                        fontSize: 12,
+                                        letterSpacing: 1.2,
+                                        color: AppTheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                    Text(
+                                      _perizinanList != null
+                                          ? (_perizinanList!.any(
+                                                  (p) => p.isActive,
+                                                )
+                                                ? 'Izin Aktif'
+                                                : 'Aktif')
+                                          : 'Aktif',
+                                      style: AppTheme.headline.copyWith(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.onSurface,
+                                      ),
+                                    ),
+                                    Text(
+                                      _perizinanList != null
+                                          ? '${_perizinanList!.where((p) => p.status.toLowerCase() == 'disetujui').length} izin disetujui'
+                                          : 'Tanpa Pelanggaran',
+                                      style: AppTheme.body.copyWith(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.secondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.verified_user_outlined, color: AppTheme.secondary),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('DISIPLIN', style: AppTheme.label.copyWith(fontSize: 12, letterSpacing: 1.2, color: AppTheme.onSurfaceVariant)),
-                              Text(
-                                _perizinanList != null
-                                    ? (_perizinanList!.any((p) => p.isActive) ? 'Izin Aktif' : 'Aktif')
-                                    : 'Aktif',
-                                style: AppTheme.headline.copyWith(fontSize: 24, fontWeight: FontWeight.bold, color: AppTheme.onSurface),
-                              ),
-                              Text(
-                                _perizinanList != null
-                                    ? '${_perizinanList!.where((p) => p.status.toLowerCase() == 'disetujui').length} izin disetujui'
-                                    : 'Tanpa Pelanggaran',
-                                style: AppTheme.body.copyWith(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.secondary),
-                              ),
-                            ],
-                          )
-                        ],
-                      ),
                     ),
                   ),
                 ],
@@ -640,76 +1045,65 @@ class _HomeContentState extends State<_HomeContent> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => SantriDetailScreen(santriId: _selectedSantriId!),
+                        builder: (context) =>
+                            SantriDetailScreen(santriId: _selectedSantriId!),
                       ),
                     );
                   }
                 },
                 child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceContainerLowest,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: AppTheme.shadowSm,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48, height: 48,
-                          decoration: BoxDecoration(
-                            color: AppTheme.tertiary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: const Icon(Icons.workspace_premium, color: AppTheme.tertiary),
-                        ),
-                        const SizedBox(width: 16),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('KEHADIRAN BULAN INI', style: AppTheme.label.copyWith(fontSize: 12, letterSpacing: 1.2, color: AppTheme.onSurfaceVariant)),
-                            Text(
-                              _kehadiranData != null
-                                  ? '${_kehadiranData!.sebulan.totalHadir}/${_kehadiranData!.sebulan.totalShalat} shalat'
-                                  : 'Lihat Detail',
-                              style: AppTheme.headline.copyWith(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.onSurface),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceContainerLowest,
+                    borderRadius: BorderRadius.circular(24),
+                    boxShadow: AppTheme.shadowSm,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              color: AppTheme.tertiary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Icon(Icons.chevron_right, color: AppTheme.outline),
-                  ],
-                ),
-              ),
-              ),
-              const SizedBox(height: 32),
-
-              // Jadwal Hari Ini
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text('Jadwal Hari Ini', style: AppTheme.headline.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
-                  Text('Lihat Semua', style: AppTheme.body.copyWith(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primary)),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceContainerLow,
-                  borderRadius: BorderRadius.circular(32),
-                ),
-                child: Column(
-                  children: _jadwalHariIni.map((jadwal) => _buildTimelineItem(
-                    jadwal['title'], 
-                    jadwal['subtitle'], 
-                    jadwal['time'], 
-                    isActive: jadwal['isActive']
-                  )).toList(), // Menggunakan list jadwal dinamis
+                            child: const Icon(
+                              Icons.workspace_premium,
+                              color: AppTheme.tertiary,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'KEHADIRAN BULAN INI',
+                                style: AppTheme.label.copyWith(
+                                  fontSize: 12,
+                                  letterSpacing: 1.2,
+                                  color: AppTheme.onSurfaceVariant,
+                                ),
+                              ),
+                              Text(
+                                _kehadiranData != null
+                                    ? '${_kehadiranData!.sebulan.totalHadir}/${_kehadiranData!.sebulan.totalShalat} shalat'
+                                    : 'Lihat Detail',
+                                style: AppTheme.headline.copyWith(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.onSurface,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const Icon(Icons.chevron_right, color: AppTheme.outline),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 32),
@@ -720,34 +1114,63 @@ class _HomeContentState extends State<_HomeContent> {
                 clipBehavior: Clip.none,
                 child: Row(
                   children: [
-                    _buildActionButton('Ajukan izin', Icons.add_circle, true, () {
-                      Navigator.push(context, MaterialPageRoute(builder: (context) => const FormIzinScreen()));
-                    }),
-                    const SizedBox(width: 12),
-                    _buildActionButton('Lihat laporan', Icons.analytics, false, () {
-                      if (_selectedSantriId != null) {
+                    _buildActionButton(
+                      'Ajukan izin',
+                      Icons.add_circle,
+                      true,
+                      () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => SantriDetailScreen(santriId: _selectedSantriId!),
+                            builder: (context) => const FormIzinScreen(),
                           ),
                         );
-                      }
-                    }),
+                      },
+                    ),
                     const SizedBox(width: 12),
-                    _buildActionButton('Chat admin', Icons.chat_bubble_outline, false, () {}),
+                    _buildActionButton(
+                      'Lihat laporan',
+                      Icons.analytics,
+                      false,
+                      () {
+                        if (_selectedSantriId != null) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SantriDetailScreen(
+                                santriId: _selectedSantriId!,
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 12),
+                    _buildActionButton(
+                      'Chat admin',
+                      Icons.chat_bubble_outline,
+                      false,
+                      () {
+                        widget.onGoToChat?.call();
+                      },
+                    ),
                   ],
                 ),
               ),
               const SizedBox(height: 32),
 
               // Pengumuman
-              Text('Pengumuman', style: AppTheme.headline.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(
+                'Pengumuman',
+                style: AppTheme.headline.copyWith(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 16),
-              FutureBuilder<List<PengumumanModel>>(
-                future: ApiService().getPengumuman(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+              Builder(
+                builder: (context) {
+                  if (_isLoadingPengumuman) {
                     return Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -758,38 +1181,7 @@ class _HomeContentState extends State<_HomeContent> {
                     );
                   }
 
-                  if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
-                    // Fallback ke UI statis jika API belum terhubung
-                    return Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: AppTheme.tertiaryFixed,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Stack(
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Libur Akhir Semester', style: AppTheme.headline.copyWith(fontWeight: FontWeight.bold, color: AppTheme.onTertiaryFixedVariant)),
-                              const SizedBox(height: 4),
-                              Text('Jadwal kepulangan santri akan diumumkan pada hari Jumat ini. Harap segera konfirmasi...', style: AppTheme.body.copyWith(fontSize: 14, color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.8))),
-                            ],
-                          ),
-                          Positioned(
-                            bottom: -20,
-                            right: -20,
-                            child: Icon(Icons.campaign, size: 80, color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.1)),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  // Tampilkan pengumuman dari API — filter hanya yang aktif
-                  final pengumumanList = snapshot.data!.where((p) => p.isActive).toList();
-
-                  if (pengumumanList.isEmpty) {
+                  if (_pengumumanList.isEmpty) {
                     return Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -798,12 +1190,18 @@ class _HomeContentState extends State<_HomeContent> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.check_circle_outline, color: AppTheme.primary, size: 32),
+                          const Icon(
+                            Icons.check_circle_outline,
+                            color: AppTheme.primary,
+                            size: 32,
+                          ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: Text(
                               'Tidak ada pengumuman aktif saat ini.',
-                              style: AppTheme.body.copyWith(color: AppTheme.onSurfaceVariant),
+                              style: AppTheme.body.copyWith(
+                                color: AppTheme.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ],
@@ -812,7 +1210,7 @@ class _HomeContentState extends State<_HomeContent> {
                   }
 
                   return Column(
-                    children: pengumumanList.map((item) {
+                    children: _pengumumanList.map((item) {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Container(
@@ -840,17 +1238,27 @@ class _HomeContentState extends State<_HomeContent> {
                                 child: Stack(
                                   children: [
                                     Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
                                             Container(
-                                              width: 32, height: 32,
+                                              width: 32,
+                                              height: 32,
                                               decoration: BoxDecoration(
-                                                color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.15),
-                                                borderRadius: BorderRadius.circular(8),
+                                                color: AppTheme
+                                                    .onTertiaryFixedVariant
+                                                    .withValues(alpha: 0.15),
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
                                               ),
-                                              child: Icon(item.icon, size: 16, color: AppTheme.onTertiaryFixedVariant),
+                                              child: Icon(
+                                                item.icon,
+                                                size: 16,
+                                                color: AppTheme
+                                                    .onTertiaryFixedVariant,
+                                              ),
                                             ),
                                             const SizedBox(width: 10),
                                             Text(
@@ -859,17 +1267,30 @@ class _HomeContentState extends State<_HomeContent> {
                                                 fontSize: 10,
                                                 fontWeight: FontWeight.w700,
                                                 letterSpacing: 1.2,
-                                                color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.6),
+                                                color: AppTheme
+                                                    .onTertiaryFixedVariant
+                                                    .withValues(alpha: 0.6),
                                               ),
                                             ),
                                             const Spacer(),
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 3,
+                                                  ),
                                               decoration: BoxDecoration(
-                                                color: item.prioritas == 'tinggi'
-                                                    ? AppTheme.error.withValues(alpha: 0.15)
-                                                    : AppTheme.secondary.withValues(alpha: 0.15),
-                                                borderRadius: BorderRadius.circular(20),
+                                                color:
+                                                    item.prioritas == 'tinggi'
+                                                    ? AppTheme.error.withValues(
+                                                        alpha: 0.15,
+                                                      )
+                                                    : AppTheme.secondary
+                                                          .withValues(
+                                                            alpha: 0.15,
+                                                          ),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
                                               ),
                                               child: Text(
                                                 item.prioritas.toUpperCase(),
@@ -877,7 +1298,10 @@ class _HomeContentState extends State<_HomeContent> {
                                                   fontSize: 9,
                                                   fontWeight: FontWeight.w700,
                                                   letterSpacing: 0.8,
-                                                  color: item.prioritas == 'tinggi' ? AppTheme.error : AppTheme.secondary,
+                                                  color:
+                                                      item.prioritas == 'tinggi'
+                                                      ? AppTheme.error
+                                                      : AppTheme.secondary,
                                                 ),
                                               ),
                                             ),
@@ -889,28 +1313,41 @@ class _HomeContentState extends State<_HomeContent> {
                                           style: AppTheme.headline.copyWith(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 16,
-                                            color: AppTheme.onTertiaryFixedVariant,
+                                            color:
+                                                AppTheme.onTertiaryFixedVariant,
                                           ),
                                         ),
                                         const SizedBox(height: 6),
                                         Text(
-                                          item.isi.length > 120 ? '${item.isi.substring(0, 120)}...' : item.isi,
+                                          item.isi.length > 120
+                                              ? '${item.isi.substring(0, 120)}...'
+                                              : item.isi,
                                           style: AppTheme.body.copyWith(
                                             fontSize: 13,
                                             height: 1.5,
-                                            color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.75),
+                                            color: AppTheme
+                                                .onTertiaryFixedVariant
+                                                .withValues(alpha: 0.75),
                                           ),
                                         ),
                                         const SizedBox(height: 12),
                                         Row(
                                           children: [
-                                            Icon(Icons.access_time, size: 13, color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.5)),
+                                            Icon(
+                                              Icons.access_time,
+                                              size: 13,
+                                              color: AppTheme
+                                                  .onTertiaryFixedVariant
+                                                  .withValues(alpha: 0.5),
+                                            ),
                                             const SizedBox(width: 4),
                                             Text(
                                               item.timeAgo,
                                               style: AppTheme.label.copyWith(
                                                 fontSize: 11,
-                                                color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.5),
+                                                color: AppTheme
+                                                    .onTertiaryFixedVariant
+                                                    .withValues(alpha: 0.5),
                                               ),
                                             ),
                                           ],
@@ -920,7 +1357,12 @@ class _HomeContentState extends State<_HomeContent> {
                                     Positioned(
                                       bottom: -24,
                                       right: -24,
-                                      child: Icon(item.icon, size: 80, color: AppTheme.onTertiaryFixedVariant.withValues(alpha: 0.06)),
+                                      child: Icon(
+                                        item.icon,
+                                        size: 80,
+                                        color: AppTheme.onTertiaryFixedVariant
+                                            .withValues(alpha: 0.06),
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -936,7 +1378,13 @@ class _HomeContentState extends State<_HomeContent> {
               const SizedBox(height: 32),
 
               // Status Perizinan
-              Text('Status Perizinan', style: AppTheme.headline.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(
+                'Status Perizinan',
+                style: AppTheme.headline.copyWith(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 16),
               if (_perizinanList != null && _perizinanList!.isNotEmpty)
                 ...(_perizinanList!.take(3).map((izin) {
@@ -967,12 +1415,16 @@ class _HomeContentState extends State<_HomeContent> {
                       child: Row(
                         children: [
                           Container(
-                            width: 48, height: 48,
+                            width: 48,
+                            height: 48,
                             decoration: const BoxDecoration(
                               color: AppTheme.surfaceContainerHighest,
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.history_edu, color: AppTheme.outline),
+                            child: const Icon(
+                              Icons.history_edu,
+                              color: AppTheme.outline,
+                            ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
@@ -980,27 +1432,47 @@ class _HomeContentState extends State<_HomeContent> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Flexible(
                                       child: Text(
                                         'Izin ${izin.jenisIzin}',
-                                        style: AppTheme.headline.copyWith(fontSize: 14, fontWeight: FontWeight.bold),
+                                        style: AppTheme.headline.copyWith(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4,
+                                      ),
                                       decoration: BoxDecoration(
                                         color: badgeBg,
                                         borderRadius: BorderRadius.circular(16),
                                       ),
-                                      child: Text(izin.statusLabel, style: AppTheme.label.copyWith(fontSize: 10, fontWeight: FontWeight.bold, color: badgeColor)),
+                                      child: Text(
+                                        izin.statusLabel,
+                                        style: AppTheme.label.copyWith(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: badgeColor,
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
                                 const SizedBox(height: 4),
-                                Text('${izin.tglMulai} - ${izin.tglSelesai}', style: AppTheme.body.copyWith(fontSize: 12, color: AppTheme.outline)),
+                                Text(
+                                  '${izin.tglMulai} - ${izin.tglSelesai}',
+                                  style: AppTheme.body.copyWith(
+                                    fontSize: 12,
+                                    color: AppTheme.outline,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -1019,12 +1491,16 @@ class _HomeContentState extends State<_HomeContent> {
                   child: Row(
                     children: [
                       Container(
-                        width: 48, height: 48,
+                        width: 48,
+                        height: 48,
                         decoration: const BoxDecoration(
                           color: AppTheme.surfaceContainerHighest,
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.history_edu, color: AppTheme.outline),
+                        child: const Icon(
+                          Icons.history_edu,
+                          color: AppTheme.outline,
+                        ),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -1034,19 +1510,41 @@ class _HomeContentState extends State<_HomeContent> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text('Izin Sakit', style: AppTheme.headline.copyWith(fontSize: 14, fontWeight: FontWeight.bold)),
+                                Text(
+                                  'Izin Sakit',
+                                  style: AppTheme.headline.copyWith(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: AppTheme.secondaryContainer,
                                     borderRadius: BorderRadius.circular(16),
                                   ),
-                                  child: Text('DISETUJUI', style: AppTheme.label.copyWith(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.secondary)),
+                                  child: Text(
+                                    'DISETUJUI',
+                                    style: AppTheme.label.copyWith(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.secondary,
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Text('Berlaku sampai 26 Okt', style: AppTheme.body.copyWith(fontSize: 12, color: AppTheme.outline)),
+                            Text(
+                              'Berlaku sampai 26 Okt',
+                              style: AppTheme.body.copyWith(
+                                fontSize: 12,
+                                color: AppTheme.outline,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -1060,61 +1558,38 @@ class _HomeContentState extends State<_HomeContent> {
     );
   }
 
-  Widget _buildTimelineItem(String title, String subtitle, String time, {required bool isActive}) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(bottom: 4),
-      decoration: BoxDecoration(
-        color: isActive ? AppTheme.surfaceContainerLowest : Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Opacity(
-        opacity: isActive ? 1.0 : 0.6,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 8, height: 32,
-                  decoration: BoxDecoration(
-                    color: isActive ? AppTheme.primary : AppTheme.outlineVariant,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: AppTheme.headline.copyWith(fontWeight: FontWeight.bold, color: AppTheme.onSurface)),
-                    Text(subtitle, style: AppTheme.body.copyWith(fontSize: 12, color: AppTheme.outline)),
-                  ],
-                ),
-              ],
-            ),
-            Text(time, style: AppTheme.body.copyWith(fontSize: 14, fontWeight: isActive ? FontWeight.bold : FontWeight.w500, color: isActive ? AppTheme.primary : AppTheme.onSurface)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton(String title, IconData icon, bool isPrimary, VoidCallback onTap) {
+  Widget _buildActionButton(
+    String title,
+    IconData icon,
+    bool isPrimary,
+    VoidCallback onTap,
+  ) {
     return AnimatedPressButton(
       onPressed: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         decoration: BoxDecoration(
-          color: isPrimary ? AppTheme.primary : AppTheme.surfaceContainerHighest,
+          color: isPrimary
+              ? AppTheme.primary
+              : AppTheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: isPrimary ? [
-            BoxShadow(color: AppTheme.primary.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 10))
-          ] : null,
+          boxShadow: isPrimary
+              ? [
+                  BoxShadow(
+                    color: AppTheme.primary.withValues(alpha: 0.2),
+                    blurRadius: 15,
+                    offset: const Offset(0, 10),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: isPrimary ? AppTheme.onPrimary : AppTheme.onSurface),
+            Icon(
+              icon,
+              size: 18,
+              color: isPrimary ? AppTheme.onPrimary : AppTheme.onSurface,
+            ),
             const SizedBox(width: 8),
             Text(
               title,

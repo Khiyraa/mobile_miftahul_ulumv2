@@ -6,6 +6,7 @@ import 'package:mobile_miftahul_ulumv2/models/santri.dart';
 import 'package:mobile_miftahul_ulumv2/services/api_service.dart';
 import 'package:mobile_miftahul_ulumv2/services/santri_api_service.dart';
 import 'package:mobile_miftahul_ulumv2/widgets/animated_press_button.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FormIzinScreen extends StatefulWidget {
   const FormIzinScreen({super.key});
@@ -17,9 +18,11 @@ class FormIzinScreen extends StatefulWidget {
 class _FormIzinScreenState extends State<FormIzinScreen> {
   String? _selectedSantri;
   String _selectedJenisIzin = 'sakit';
-  DateTime? _selectedDate;
+  DateTime? _selectedDateMulai;
+  DateTime? _selectedDateSelesai;
   final TextEditingController _keteranganController = TextEditingController();
-  final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _dateMulaiController = TextEditingController();
+  final TextEditingController _dateSelesaiController = TextEditingController();
   bool _isLoading = false;
 
   // Data santri dari API
@@ -34,8 +37,11 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
 
   Future<void> _loadSantriList() async {
     try {
-      // Menggunakan ID orang tua placeholder — nanti diambil dari SharedPreferences
-      final response = await SantriApiService.getSantriByOrtuIdFromMobile('1');
+      final prefs = await SharedPreferences.getInstance();
+      final idAkun = prefs.getString('id_akun') ?? '1';
+      
+      // Menggunakan ID orang tua dari SharedPreferences
+      final response = await SantriApiService.getSantriByOrtuIdFromMobile(idAkun);
       if (mounted) {
         setState(() {
           if (response.success && response.data != null && response.data!.isNotEmpty) {
@@ -52,12 +58,13 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
   @override
   void dispose() {
     _keteranganController.dispose();
-    _dateController.dispose();
+    _dateMulaiController.dispose();
+    _dateSelesaiController.dispose();
     super.dispose();
   }
 
   void _onSubmit() async {
-    if (_selectedSantri == null || _selectedDate == null || _keteranganController.text.trim().isEmpty) {
+    if (_selectedSantri == null || _selectedDateMulai == null || _selectedDateSelesai == null || _keteranganController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('Harap lengkapi semua field'),
@@ -73,22 +80,22 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
 
     try {
       final izin = IzinRequestModel(
-        idSantri: _selectedSantri!,
-        jenisIzin: _selectedJenisIzin,
-        startDate: _selectedDate!.toIso8601String().split('T').first,
-        endDate: _selectedDate!.toIso8601String().split('T').first,
-        alasan: _keteranganController.text.trim(),
+        studentId: int.parse(_selectedSantri!),
+        jenis: _selectedJenisIzin,
+        tanggalMulai: _selectedDateMulai!.toIso8601String().split('T').first,
+        tanggalSelesai: _selectedDateSelesai!.toIso8601String().split('T').first,
+        keterangan: _keteranganController.text.trim(),
       );
 
-      final success = await ApiService().submitIzin(izin);
+      final response = await ApiService().submitIzin(izin);
 
       if (!mounted) return;
       setState(() => _isLoading = false);
 
-      if (success) {
+      if (response['success'] == true) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Pengajuan izin berhasil dikirim!'),
+            content: Text(response['message'] ?? 'Pengajuan izin berhasil dikirim!'),
             backgroundColor: AppTheme.primary,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -98,7 +105,7 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Gagal mengirim pengajuan izin'),
+            content: Text(response['message'] ?? 'Gagal mengirim pengajuan izin'),
             backgroundColor: AppTheme.error,
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -146,8 +153,7 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
                   hoverColor: AppTheme.surfaceContainerLow,
                 ),
                 onPressed: () {
-                  // Wait, this is part of the bottom nav normally, or can be pushed.
-                  // Just standard pop if pushed. If bottom nav, this doesn't pop.
+                  Navigator.pop(context);
                 },
               ),
             ),
@@ -169,10 +175,8 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   image: DecorationImage(
-                    image: NetworkImage(
-                      'https://lh3.googleusercontent.com/aida-public/AB6AXuAJDpgMtUB7QyTIReKxLclqds2h7vqdBoRAUvwi-JbVHmJdzb5LutGzd_PJAOk9vn2AYQbbiecx1VmBZA5r2BY-L-MRHjkJQHRDCdOsLpuiYs30Pa-2MLJEhF82hW16JioiDhqogxZfqn9rgMFkKkTVlNRUEw65K-bgSKsA1Olo1ZDqCTZYWY7KrAE_IltiRHHZQAn6mpoRt-zCS3HRdpT5b-_CcBbCUISDgyfus1hYlGNUwLVkWXAF7sow33rCpH30k2_yMOoPgV6g',
-                    ),
-                    fit: BoxFit.cover,
+                    image: AssetImage('assets/images/logo.png'),
+                    fit: BoxFit.contain,
                   ),
                 ),
               ),
@@ -275,19 +279,19 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
                       ),
                       const SizedBox(height: 24),
 
-                      // Tanggal Izin Field
-                      _buildLabel('Tanggal Izin'),
+                      // Tanggal Mulai Izin Field
+                      _buildLabel('Tanggal Mulai'),
                       Container(
                         decoration: BoxDecoration(
                           color: AppTheme.surfaceContainerLow,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: TextFormField(
-                          controller: _dateController,
+                          controller: _dateMulaiController,
                           readOnly: true,
                           style: AppTheme.body.copyWith(fontSize: 14, color: AppTheme.onSurface),
                           decoration: InputDecoration(
-                            hintText: 'Pilih Tanggal',
+                            hintText: 'Pilih Tanggal Mulai',
                             hintStyle: AppTheme.body.copyWith(color: AppTheme.outline),
                             suffixIcon: const Icon(Icons.calendar_today, color: AppTheme.outline),
                             border: InputBorder.none,
@@ -302,8 +306,48 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
                             );
                             if (date != null) {
                               setState(() {
-                                _selectedDate = date;
-                                _dateController.text = '${date.day}/${date.month}/${date.year}';
+                                _selectedDateMulai = date;
+                                _dateMulaiController.text = '${date.day}/${date.month}/${date.year}';
+                                // Auto set tanggal selesai if it's null or before mulai
+                                if (_selectedDateSelesai == null || _selectedDateSelesai!.isBefore(date)) {
+                                  _selectedDateSelesai = date;
+                                  _dateSelesaiController.text = '${date.day}/${date.month}/${date.year}';
+                                }
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // Tanggal Selesai Izin Field
+                      _buildLabel('Tanggal Selesai'),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: AppTheme.surfaceContainerLow,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TextFormField(
+                          controller: _dateSelesaiController,
+                          readOnly: true,
+                          style: AppTheme.body.copyWith(fontSize: 14, color: AppTheme.onSurface),
+                          decoration: InputDecoration(
+                            hintText: 'Pilih Tanggal Selesai',
+                            hintStyle: AppTheme.body.copyWith(color: AppTheme.outline),
+                            suffixIcon: const Icon(Icons.event, color: AppTheme.outline),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                          ),
+                          onTap: () async {
+                            final date = await showDatePicker(
+                              context: context,
+                              initialDate: _selectedDateMulai ?? DateTime.now(),
+                              firstDate: _selectedDateMulai ?? DateTime.now(),
+                              lastDate: DateTime(2030),
+                            );
+                            if (date != null) {
+                              setState(() {
+                                _selectedDateSelesai = date;
+                                _dateSelesaiController.text = '${date.day}/${date.month}/${date.year}';
                               });
                             }
                           },
@@ -316,8 +360,16 @@ class _FormIzinScreenState extends State<FormIzinScreen> {
                       Row(
                         children: [
                           Expanded(child: _buildRadioOption('Sakit', 'sakit', Icons.medical_services)),
-                          const SizedBox(width: 16),
-                          Expanded(child: _buildRadioOption('Lainnya', 'lainnya', Icons.pending_actions)),
+                          const SizedBox(width: 8),
+                          Expanded(child: _buildRadioOption('Keluar', 'keluar', Icons.directions_walk)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(child: _buildRadioOption('Pulang', 'pulang', Icons.home)),
+                          const SizedBox(width: 8),
+                          Expanded(child: _buildRadioOption('Kegiatan', 'kegiatan', Icons.event_note)),
                         ],
                       ),
                       const SizedBox(height: 24),

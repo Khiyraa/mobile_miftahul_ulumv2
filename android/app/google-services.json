@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "195307192861",
+    "project_id": "miftahul-ulum-e7e5a",
+    "storage_bucket": "miftahul-ulum-e7e5a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:195307192861:android:9627ca59d901f458043cf4",
+        "android_client_info": {
+          "package_name": "com.miftahulUlum.mobileApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCn6YP6eWKM5zTlIKoTazDPATPRtS_olQ0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

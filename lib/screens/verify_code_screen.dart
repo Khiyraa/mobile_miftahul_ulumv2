@@ -200,10 +200,8 @@ class _VerifyCodeScreenState extends State<VerifyCodeScreen> {
                           color: AppTheme.surfaceContainerLowest,
                           shape: BoxShape.circle,
                           image: DecorationImage(
-                            image: NetworkImage(
-                              'https://lh3.googleusercontent.com/aida-public/AB6AXuBFs7szE0NqE1Dn-HBCDvZw6bNhRShcyXneucer5BJCB7H4kXoroXh48Pt_9WSsK6_beCZo1FX9tvqbJS6ZSk_jrY1A-NkW0CXVsDfpcdKHCQ1_BdSCKpD20fg32-RIx6qgBxtJBFDPClgcyLUsxhHjgEnKGo11zYxtCbjZZpKFSIEPoyT1_ki4DnU007fSSkAIww-O9Hd-55mKZGMxlnA5PBfyrEVh23rq04GJmcMmleCuQeLXxZhs18uVEOLpYLs-rqyyyoOxnG-4',
-                            ),
-                            fit: BoxFit.cover,
+                            image: AssetImage('assets/images/logo.png'),
+                            fit: BoxFit.contain,
                             opacity: 0.3,
                             colorFilter: ColorFilter.mode(Colors.white, BlendMode.overlay),
                           ),
