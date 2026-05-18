@@ -18,7 +18,7 @@ String getBaseUrl() {
 // ─── Konfigurasi Laravel Reverb (WebSocket) ───────────────────
 // Harus sinkron dengan nilai di .env Laravel (REVERB_*)
 const String kReverbAppKey = '5e3xxduirsctb4kkd899';
-const int kReverbWsPort = 8080;
+const int kReverbWsPort = 8081;
 const bool kReverbUseTls = false; // REVERB_SCHEME=http
 
 /// Host Reverb — sama dengan host API tapi port 8080

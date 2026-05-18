@@ -22,7 +22,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _isLoading = true;
   bool _isConnected = false;
 
-  String _parentId   = '';
+  String _parentId = '';
   String _parentName = '';
 
   StreamSubscription<ReverbEvent>? _reverbSub;
@@ -49,12 +49,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
-    _parentId   = prefs.getString('parentId')   ?? '1';
+    _parentId = prefs.getString('parentId') ?? '1';
     _parentName = prefs.getString('parentName') ?? 'Wali Santri';
 
-    await _loadMessages();
+    // Subscribe dulu sebelum load pesan
     _setupReverbListener();
-    _startPolling();
+
+    // Baru load pesan
+    await _loadMessages();
   }
 
   Future<void> _loadMessages() async {
@@ -87,11 +89,15 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         if (_messages.any((m) => m.id == newId)) return; // Hindari duplikat
 
         final msg = ChatMessageModel(
-          id:        newId,
-          sender:    'Pengurus Pesantren',
-          text:      evt.data['pesan'] as String? ?? '',
-          timestamp: DateTime.tryParse(evt.data['created_at'] as String? ?? '')?.toLocal() ?? DateTime.now(),
-          isMe:      false,
+          id: newId,
+          sender: 'Pengurus Pesantren',
+          text: evt.data['pesan'] as String? ?? '',
+          timestamp:
+              DateTime.tryParse(
+                evt.data['created_at'] as String? ?? '',
+              )?.toLocal() ??
+              DateTime.now(),
+          isMe: false,
         );
         setState(() {
           _messages.add(msg);
@@ -144,11 +150,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _messageController.clear();
 
     final optimistic = ChatMessageModel(
-      id:        'temp_${DateTime.now().millisecondsSinceEpoch}',
-      sender:    _parentName,
-      text:      text,
+      id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+      sender: _parentName,
+      text: text,
       timestamp: DateTime.now(),
-      isMe:      true,
+      isMe: true,
     );
     setState(() => _messages.add(optimistic));
     _scrollToBottom();
@@ -191,8 +197,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String _formatDate(DateTime dt) {
     final local = dt.toLocal();
     const months = [
-      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
-      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
     ];
     return '${local.day} ${months[local.month - 1]} ${local.year}';
   }
@@ -236,12 +252,17 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               child: Row(
                 children: [
                   Container(
-                    width: 40, height: 40,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: AppTheme.primaryContainer,
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.support_agent, color: AppTheme.primary, size: 20),
+                    child: const Icon(
+                      Icons.support_agent,
+                      color: AppTheme.primary,
+                      size: 20,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -251,21 +272,29 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       children: [
                         Text(
                           'Pengurus Pesantren',
-                          style: AppTheme.headline.copyWith(fontSize: 15, fontWeight: FontWeight.w700),
+                          style: AppTheme.headline.copyWith(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         Row(
                           children: [
                             AnimatedContainer(
                               duration: const Duration(milliseconds: 400),
-                              width: 7, height: 7,
+                              width: 7,
+                              height: 7,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: _isConnected ? const Color(0xFF22c55e) : Colors.orange,
+                                color: _isConnected
+                                    ? const Color(0xFF22c55e)
+                                    : Colors.orange,
                               ),
                             ),
                             const SizedBox(width: 5),
                             Text(
-                              _isConnected ? 'Terhubung · Waktu Nyata' : 'Mode Biasa · Periksa setiap 10 detik',
+                              _isConnected
+                                  ? 'Terhubung · Waktu Nyata'
+                                  : 'Mode Biasa · Periksa setiap 10 detik',
                               style: AppTheme.label.copyWith(
                                 fontSize: 11,
                                 color: _isConnected
@@ -279,7 +308,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: AppTheme.primary, size: 20),
+                    icon: const Icon(
+                      Icons.refresh_rounded,
+                      color: AppTheme.primary,
+                      size: 20,
+                    ),
                     onPressed: _isLoading ? null : _loadMessages,
                     tooltip: 'Muat ulang',
                   ),
@@ -320,21 +353,34 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 72, height: 72,
+              width: 72,
+              height: 72,
               decoration: BoxDecoration(
                 color: AppTheme.primaryContainer,
                 borderRadius: BorderRadius.circular(24),
               ),
-              child: const Icon(Icons.chat_bubble_outline, color: AppTheme.primary, size: 32),
+              child: const Icon(
+                Icons.chat_bubble_outline,
+                color: AppTheme.primary,
+                size: 32,
+              ),
             ),
             const SizedBox(height: 16),
-            Text('Belum ada pesan',
-                style: AppTheme.headline.copyWith(fontSize: 16, fontWeight: FontWeight.w700)),
+            Text(
+              'Belum ada pesan',
+              style: AppTheme.headline.copyWith(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 6),
             Text(
               'Mulai percakapan dengan pengurus pesantren',
               textAlign: TextAlign.center,
-              style: AppTheme.body.copyWith(fontSize: 13, color: AppTheme.onSurfaceVariant),
+              style: AppTheme.body.copyWith(
+                fontSize: 13,
+                color: AppTheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -354,8 +400,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         child: Text(
           label,
           style: AppTheme.label.copyWith(
-            fontSize: 11, fontWeight: FontWeight.w600,
-            color: AppTheme.onSurfaceVariant, letterSpacing: 0.4,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.onSurfaceVariant,
+            letterSpacing: 0.4,
           ),
         ),
       ),
@@ -369,9 +417,13 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       child: Align(
         alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.76,
+          ),
           child: Column(
-            crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment: isMine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
             children: [
               Padding(
                 padding: const EdgeInsets.only(bottom: 3, left: 2, right: 2),
@@ -379,35 +431,61 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   mainAxisSize: MainAxisSize.min,
                   children: isMine
                       ? [
-                          Text(_formatTime(msg.timestamp),
-                              style: AppTheme.label.copyWith(fontSize: 10, color: AppTheme.onSurfaceVariant)),
+                          Text(
+                            _formatTime(msg.timestamp),
+                            style: AppTheme.label.copyWith(
+                              fontSize: 10,
+                              color: AppTheme.onSurfaceVariant,
+                            ),
+                          ),
                           const SizedBox(width: 5),
-                          Text(_parentName.isNotEmpty ? _parentName : 'Saya',
-                              style: AppTheme.label.copyWith(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.onSurface)),
+                          Text(
+                            _parentName.isNotEmpty ? _parentName : 'Saya',
+                            style: AppTheme.label.copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.onSurface,
+                            ),
+                          ),
                         ]
                       : [
-                          Text(msg.sender,
-                              style: AppTheme.label.copyWith(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primary)),
+                          Text(
+                            msg.sender,
+                            style: AppTheme.label.copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.primary,
+                            ),
+                          ),
                           const SizedBox(width: 5),
-                          Text(_formatTime(msg.timestamp),
-                              style: AppTheme.label.copyWith(fontSize: 10, color: AppTheme.onSurfaceVariant)),
+                          Text(
+                            _formatTime(msg.timestamp),
+                            style: AppTheme.label.copyWith(
+                              fontSize: 10,
+                              color: AppTheme.onSurfaceVariant,
+                            ),
+                          ),
                         ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: isMine ? AppTheme.primary : Colors.white,
                   borderRadius: BorderRadius.only(
-                    topLeft:     const Radius.circular(18),
-                    topRight:    const Radius.circular(18),
-                    bottomLeft:  Radius.circular(isMine ? 18 : 4),
+                    topLeft: const Radius.circular(18),
+                    topRight: const Radius.circular(18),
+                    bottomLeft: Radius.circular(isMine ? 18 : 4),
                     bottomRight: Radius.circular(isMine ? 4 : 18),
                   ),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 6, offset: const Offset(0, 2),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
@@ -415,13 +493,18 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   msg.text,
                   style: AppTheme.body.copyWith(
                     color: isMine ? Colors.white : AppTheme.onSurface,
-                    fontSize: 14, height: 1.5,
+                    fontSize: 14,
+                    height: 1.5,
                   ),
                 ),
               ),
               if (isMine) ...[
                 const SizedBox(height: 2),
-                const Icon(Icons.done_all_rounded, size: 13, color: AppTheme.primary),
+                const Icon(
+                  Icons.done_all_rounded,
+                  size: 13,
+                  color: AppTheme.primary,
+                ),
               ],
             ],
           ),
@@ -433,16 +516,23 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Widget _buildInputArea() {
     return Container(
       padding: EdgeInsets.only(
-        left: 12, right: 12, top: 10,
+        left: 12,
+        right: 12,
+        top: 10,
         bottom: MediaQuery.of(context).padding.bottom + 10,
       ),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        border: Border(top: BorderSide(color: AppTheme.outlineVariant.withValues(alpha: 0.25))),
+        border: Border(
+          top: BorderSide(
+            color: AppTheme.outlineVariant.withValues(alpha: 0.25),
+          ),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12, offset: const Offset(0, -4),
+            blurRadius: 12,
+            offset: const Offset(0, -4),
           ),
         ],
       ),
@@ -455,7 +545,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: AppTheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: AppTheme.outlineVariant.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppTheme.outlineVariant.withValues(alpha: 0.3),
+                ),
               ),
               child: TextField(
                 controller: _messageController,
@@ -463,8 +555,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 textCapitalization: TextCapitalization.sentences,
                 decoration: InputDecoration(
                   hintText: 'Ketik pesan…',
-                  hintStyle: AppTheme.body.copyWith(color: AppTheme.onSurfaceVariant, fontSize: 14),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  hintStyle: AppTheme.body.copyWith(
+                    color: AppTheme.onSurfaceVariant,
+                    fontSize: 14,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
                   border: InputBorder.none,
                 ),
                 style: AppTheme.body.copyWith(fontSize: 14),
@@ -476,18 +574,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           GestureDetector(
             onTap: _sendMessage,
             child: Container(
-              width: 44, height: 44,
+              width: 44,
+              height: 44,
               decoration: BoxDecoration(
                 color: AppTheme.primary,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
                     color: AppTheme.primary.withValues(alpha: 0.3),
-                    blurRadius: 8, offset: const Offset(0, 2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),
-              child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+              child: const Icon(
+                Icons.send_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
             ),
           ),
         ],
