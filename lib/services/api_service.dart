@@ -9,7 +9,7 @@ import 'package:mobile_miftahul_ulumv2/models/izin_model.dart';
 // ======================= BAGIAN KEDUA: Fungsi Umum =======================
 
 // Konfigurasi server — VPS Production
-const String _kVpsBaseUrl = 'http://103.157.27.237:8000';
+const String _kVpsBaseUrl = 'http://103.157.27.237';
 
 String getBaseUrl() {
   return _kVpsBaseUrl;
