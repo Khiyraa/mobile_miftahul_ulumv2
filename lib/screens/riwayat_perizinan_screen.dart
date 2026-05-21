@@ -62,23 +62,23 @@ class _RiwayatPerizinanScreenState extends State<RiwayatPerizinanScreen>
       final prefs = await SharedPreferences.getInstance();
       final idAkun = prefs.getString('id_akun') ?? '1';
 
-      print('DEBUG RIWAYAT: idAkun = $idAkun');
+      debugPrint('DEBUG RIWAYAT: idAkun = $idAkun');
 
       final santriResp = await SantriApiService.getSantriByOrtuIdFromMobile(idAkun, useCache: false);
       if (!santriResp.success || santriResp.data == null || santriResp.data!.isEmpty) {
-        print('DEBUG RIWAYAT: santriResp failed or empty');
+        debugPrint('DEBUG RIWAYAT: santriResp failed or empty');
         if (mounted) setState(() { _isLoading = false; _error = 'Tidak ada data santri ditemukan.'; });
         return;
       }
       _santriList = santriResp.data!;
-      print('DEBUG RIWAYAT: _santriList length = ${_santriList.length}');
+      debugPrint('DEBUG RIWAYAT: _santriList length = ${_santriList.length}');
       _setupReverbListeners();
 
       List<Perizinan> all = [];
       for (var santri in _santriList) {
-        print('DEBUG RIWAYAT: Fetching perizinan for idSantri = ${santri.idSantri}');
+        debugPrint('DEBUG RIWAYAT: Fetching perizinan for idSantri = ${santri.idSantri}');
         final resp = await SantriApiService.getPerizinanSetahun(santri.idSantri.toString(), useCache: false);
-        print('DEBUG RIWAYAT: resp.success = ${resp.success}, msg = ${resp.message}');
+        debugPrint('DEBUG RIWAYAT: resp.success = ${resp.success}, msg = ${resp.message}');
         if (resp.success && resp.data != null) {
           all.addAll(resp.data!);
         }
@@ -86,10 +86,10 @@ class _RiwayatPerizinanScreenState extends State<RiwayatPerizinanScreen>
       // Sort newest first
       all.sort((a, b) => b.idPerizinan.compareTo(a.idPerizinan));
 
-      print('DEBUG RIWAYAT: all length = ${all.length}');
+      debugPrint('DEBUG RIWAYAT: all length = ${all.length}');
       if (mounted) setState(() { _allPerizinan = all; _isLoading = false; });
     } catch (e) {
-      print('DEBUG RIWAYAT: error = $e');
+      debugPrint('DEBUG RIWAYAT: error = $e');
       if (mounted) setState(() { _isLoading = false; _error = e.toString(); });
     }
   }

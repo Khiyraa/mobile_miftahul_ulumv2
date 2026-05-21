@@ -57,7 +57,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
     // Baru load pesan
     await _loadMessages();
+
+    // Polling safety net jika WebSocket terputus
+    _startPolling();
   }
+
 
   Future<void> _loadMessages() async {
     final msgs = await ApiService().getChatHistory(_parentId);

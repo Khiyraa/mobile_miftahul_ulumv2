@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/santri.dart';
 import '../models/kehadiran_mingguan.dart';
@@ -99,15 +100,15 @@ class SantriApiService {
             data: data,
           );
         } else {
-          print('API SERVICE ERROR: success is false. Message: ${jsonData['message']}');
+          debugPrint('API SERVICE ERROR: success is false. Message: ${jsonData['message']}');
           return ApiResponse<T>(success: false, message: jsonData['message'] ?? 'Error');
         }
       } else {
-        print('API SERVICE ERROR: HTTP ${response.statusCode}. Body: ${response.body}');
+        debugPrint('API SERVICE ERROR: HTTP ${response.statusCode}. Body: ${response.body}');
         return ApiResponse<T>(success: false, message: 'HTTP Error: ${response.statusCode}');
       }
     } catch (e, stacktrace) {
-      print('API SERVICE ERROR: Exception: $e. Stacktrace: $stacktrace');
+      debugPrint('API SERVICE ERROR: Exception: $e. Stacktrace: $stacktrace');
       return ApiResponse<T>(success: false, message: 'Network Error: $e');
     }
   }
