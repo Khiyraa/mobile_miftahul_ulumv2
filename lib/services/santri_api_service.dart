@@ -170,9 +170,17 @@ class SantriApiService {
   }) async {
     return _getRequest<List<KehadiranMingguan>>(
       endpoint: 'kehadiran-mingguan/$idSantri',
-      fromJson:
-          (data) =>
-              (data as List).map((e) => KehadiranMingguan.fromJson(e)).toList(),
+      fromJson: (data) {
+        final rawList = (data as List).map((e) => KehadiranMingguan.fromJson(e)).toList();
+        final Map<String, KehadiranMingguan> uniqueMap = {};
+        for (var item in rawList) {
+          final key = item.tanggal ?? item.hari;
+          if (!uniqueMap.containsKey(key)) {
+            uniqueMap[key] = item;
+          }
+        }
+        return uniqueMap.values.toList();
+      },
       useCache: useCache,
     );
   }

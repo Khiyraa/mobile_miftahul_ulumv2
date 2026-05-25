@@ -580,13 +580,14 @@ class _HomeContentState extends State<_HomeContent> {
                                       : AppTheme.onSurface,
                                 ),
                               ),
-                              if (santri.kelas != null || santri.kamar != null)
+                              if (santri.kelas != null || santri.nis != null || santri.kamar != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
                                     [
-                                      if (santri.kelas != null) santri.kelas!,
-                                      if (santri.kamar != null) santri.kamar!,
+                                      if (santri.nis != null && santri.nis != '-') 'NIS: ${santri.nis}',
+                                      if (santri.kelas != null && santri.kelas != '-') santri.kelas!,
+                                      if (santri.kamar != null && santri.kamar != '-') santri.kamar!,
                                     ].join(' • '),
                                     style: AppTheme.label.copyWith(
                                       fontSize: 12,
@@ -806,10 +807,9 @@ class _HomeContentState extends State<_HomeContent> {
                                                       _santriList!.first,
                                                 );
                                             final info = [
-                                              if (santri.kelas != null)
-                                                santri.kelas!,
-                                              if (santri.kamar != null)
-                                                santri.kamar!,
+                                              if (santri.nis != null && santri.nis != '-') 'NIS: ${santri.nis}',
+                                              if (santri.kelas != null && santri.kelas != '-') santri.kelas!,
+                                              if (santri.kamar != null && santri.kamar != '-') santri.kamar!,
                                             ].join(' • ');
                                             return info.isNotEmpty
                                                 ? Text(

@@ -38,7 +38,7 @@ class Santri {
       idSantri: json['id_santri'] is int
           ? json['id_santri']
           : int.tryParse(json['id_santri'].toString()) ?? 0,
-      nis: json['nis']?.toString() ?? '',
+      nis: json['nis']?.toString() ?? (json['id_santri']?.toString() ?? '-'),
       nama: json['nama'] ?? '',
       tempatLahir: json['tempat_lahir'],
       tglLahir: json['tgl_lahir'],
@@ -46,8 +46,8 @@ class Santri {
       alamat: json['alamat'],
       noTelp: json['no_telp'],
       foto: json['foto'],
-      kelas: json['kelas'],
-      kamar: json['kamar'],
+      kelas: json['tahun_angkatan']?.toString() ?? json['kelas']?.toString() ?? '-',
+      kamar: json['kamar']?.toString() ?? '-',
       status: json['status'],
       idOrtu: json['id_ortu'] is int
           ? json['id_ortu']

@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 class KehadiranMingguan {
   final int id;
   final int idSantri;
@@ -26,20 +28,36 @@ class KehadiranMingguan {
   });
 
   factory KehadiranMingguan.fromJson(Map<String, dynamic> json) {
+    String parseStatus(dynamic val) {
+      if (val == 1 || val == '1') return 'hadir';
+      return 'tidak_hadir';
+    }
+
+    String hariName = json['hari'] ?? '';
+    String? tgl = json['tanggal'];
+    if (tgl != null && hariName.isEmpty) {
+      try {
+        final dt = DateTime.parse(tgl).toLocal();
+        hariName = DateFormat('EEEE', 'id_ID').format(dt);
+      } catch (e) {
+        hariName = '';
+      }
+    }
+
     return KehadiranMingguan(
       id: json['id'] is int
           ? json['id']
-          : int.tryParse(json['id'].toString()) ?? 0,
+          : int.tryParse(json['id']?.toString() ?? '0') ?? 0,
       idSantri: json['id_santri'] is int
           ? json['id_santri']
-          : int.tryParse(json['id_santri'].toString()) ?? 0,
-      hari: json['hari'] ?? '',
-      tanggal: json['tanggal'],
-      subuh: json['subuh'] ?? 'tidak_hadir',
-      dzuhur: json['dzuhur'] ?? 'tidak_hadir',
-      ashar: json['ashar'] ?? 'tidak_hadir',
-      maghrib: json['maghrib'] ?? 'tidak_hadir',
-      isya: json['isya'] ?? 'tidak_hadir',
+          : int.tryParse(json['id_santri']?.toString() ?? '0') ?? 0,
+      hari: hariName,
+      tanggal: tgl,
+      subuh: parseStatus(json['Subuh'] ?? json['subuh']),
+      dzuhur: parseStatus(json['Dzuhur'] ?? json['dzuhur']),
+      ashar: parseStatus(json['Ashar'] ?? json['ashar']),
+      maghrib: parseStatus(json['Maghrib'] ?? json['maghrib']),
+      isya: parseStatus(json['Isya'] ?? json['isya']),
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
           : null,

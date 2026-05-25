@@ -12,10 +12,19 @@ class KehadiranData {
   });
 
   factory KehadiranData.fromJson(Map<String, dynamic> json) {
-    return KehadiranData(
-      seminggu: KehadiranPeriode.fromJson(json['seminggu'] ?? {}),
-      sebulan: KehadiranPeriode.fromJson(json['sebulan'] ?? {}),
-      setahun: KehadiranPeriode.fromJson(json['setahun'] ?? {}),
-    );
+    if (json.containsKey('seminggu') || json.containsKey('sebulan') || json.containsKey('setahun')) {
+      return KehadiranData(
+        seminggu: KehadiranPeriode.fromJson(json['seminggu'] ?? {}),
+        sebulan: KehadiranPeriode.fromJson(json['sebulan'] ?? {}),
+        setahun: KehadiranPeriode.fromJson(json['setahun'] ?? {}),
+      );
+    } else {
+      final periode = KehadiranPeriode.fromFlatJson(json);
+      return KehadiranData(
+        seminggu: periode,
+        sebulan: periode,
+        setahun: periode,
+      );
+    }
   }
 }
