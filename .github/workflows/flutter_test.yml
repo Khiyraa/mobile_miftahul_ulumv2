@@ -36,5 +36,8 @@ jobs:
       - name: Install Dependencies
         run: flutter pub get
 
+      - name: Create .env file
+        run: echo "API_URL=http://localhost" > .env
+
       - name: Run Unit Tests
         run: flutter test
