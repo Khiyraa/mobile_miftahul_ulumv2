@@ -52,6 +52,9 @@ Future<Map<String, dynamic>> loginUser(String email, String password) async {
       };
     }
   } catch (e) {
+    if (e.toString().contains('SocketException') || e.toString().contains('Network is unreachable')) {
+      return {'success': false, 'message': 'Tidak ada koneksi internet. Silakan periksa jaringan HP Anda dan coba lagi.'};
+    }
     return {'success': false, 'message': 'Terjadi kesalahan: $e'};
   }
 }
