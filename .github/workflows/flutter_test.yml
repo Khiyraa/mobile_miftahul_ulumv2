@@ -5,10 +5,12 @@ on:
     branches:
       - main
       - master
+      - revisi-minorv2
   pull_request:
     branches:
       - main
       - master
+      - revisi-minorv2
 
 jobs:
   test:
